@@ -2,7 +2,7 @@
 
 Welcome to CMU 10799 Spring 2026: Diffusion & Flow Matching!
 
-This repository contains your starter code for all four homework assignments. You'll build a working diffusion model from scratch, starting with DDPM fundamentals and progressing through flow matching to your chosen specialization track. The codebase is designed to grow with you—what you implement in HW1 becomes the foundation for everything that follows.
+This repository contains your starter code for all four homework assignments. You'll build a working diffusion model from scratch, starting with DDPM fundamentals and progressing through flow matching to your chosen specialization track. The codebase is designed to grow with you, and what you implement in HW1 becomes the foundation for everything that follows.
 
 ## Project Structure
 
