@@ -1,0 +1,39 @@
+
+\hwpart{IV}{Ablation Study (30 points)}
+In this part of the homework, we will explore different design choices of the DDPM algorithm and how they can affect the final performance.
+
+\question{Alternative Parametrization}{20}
+
+\subq{a}{7} The original DDPM paper parametrized the model to predict the noise $\epsilon$. However, this is not the only option! First derive an alternative parametrization for the same model (i.e. what else can the model predict that can still yield the same mathematical formulation of the algorithm).
+
+\answerbox{}{
+% Your answer here
+\vspace{14cm} % comment this line out after you put in your answers
+}
+\includeanswer{q6a}
+
+\subq{b}{10} Now implement your derived parametrization and train a model with the same configuration with your previous DDPM implementation with the only difference being the model parametrization. Include a grid of 16 samples and report your KID below. (Budget tip: You can compare the two parameterizations using shorter training runs, as long as they provide meaningful comparisons.)
+
+\answerbox{}{
+% Your answer here
+\vspace{10cm} % comment this line out after you put in your answers
+}
+\includeanswer{q6b}
+
+\subq{c}{3} Compare the performance of your new parametrization with that of the original parametrization. Share your findings below.
+
+\answerbox{}{
+% Your answer here
+\vspace{5cm} % comment this line out after you put in your answers
+}
+\includeanswer{q6c}
+
+\question{Sampling Steps Ablation}{10}
+
+\subq{a}{10} DDPM typically uses 1000 timesteps for sampling, which is slow. How about using fewer steps? Report the KID scores for DDPM sampling algorithm with $100,300,500,700,900$ steps and compare with your original sampling with $1000$ steps. Include 1 sample for each number of steps to qualitatively show your comparisons as well.
+
+\answerbox{}{
+% Your answer here
+\vspace{10cm} % comment this line out after you put in your answers
+}
+\includeanswer{q7a}

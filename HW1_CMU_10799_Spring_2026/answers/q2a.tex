@@ -1,0 +1,17 @@
+\textbf{Answer: No, we would not expect SOTA performance as measured by FID/KID.}
+
+Here's why:
+
+FID (Fréchet Inception Distance) and KID (Kernel Inception Distance) measure the similarity between generated samples and real data using an Inception network trained on ImageNet. When a model trained on full CelebA (200K diverse faces) is evaluated on this filtered subset, there is a fundamental \textit{distribution mismatch}:
+
+\begin{itemize}
+    \item \textbf{Domain Shift}: The model was trained on full CelebA which includes bearded faces, older individuals, various ethnicities with less representation in our subset, and many other diverse attributes. Our filtered subset is a much narrower domain.
+    
+    \item \textbf{FID/KID Sensitivity to Diversity}: FID and KID measure distances in Inception feature space. When comparing generated samples from our narrow subset to the full CelebA distribution, the metric inherently penalizes the generated distribution for being ``too narrow.'' The Inception network expects the diversity of the full CelebA dataset.
+    
+    \item \textbf{Coverage vs. Precision Trade-off}: The pre-trained SOTA model optimizes for coverage of the entire CelebA distribution. When tested specifically on our subset, it may be missing some attributes (e.g., generating some bearded faces) that are not present in our evaluation set, causing FID/KID to increase.
+    
+    \item \textbf{Correct Answer, Wrong Metric}: It's quite possible that samples \textit{visually match} our subset better than full CelebA samples would, but FID/KID wouldn't capture this because they're evaluating against a different distribution.
+\end{itemize}
+
+In this case, we'd need metrics specifically designed for the subset (like conditional FID restricted to no-beard, young faces) to properly evaluate the model's performance on our filtered domain.

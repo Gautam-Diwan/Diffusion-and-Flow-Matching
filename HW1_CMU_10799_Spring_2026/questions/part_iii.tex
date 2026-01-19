@@ -1,0 +1,37 @@
+
+\hwpart{III}{Help Your ``Classmate'' Debug (15 points)}
+Your classmate Kale is having some trouble getting her model to work. As someone who has successfully trained a DDPM model, you decide to help!
+
+In each of the following scenario, you may be provided a loss curve, a grid of samples or a description of the situation. Try your best to help Kale with her implementation!
+
+\question{Pseudo Debugging Scenarios}{15}
+
+\subq{a}{5} Kale trained a model for 1000 iterations and observed this seemingly nice looking loss curve. However, all her samples are pure noise. What could be the problem here? List at least two potential sources of bugs.
+\hwimagepair{q5a_loss_curve.png}{q5a_samples.png}{The loss curve she observed}{The final samples she obtained}{The loss curve and the samples that Kale observed.}
+
+\answerbox{}{
+% Your answer here
+\vspace{5cm} % comment this line out after you put in your answers
+}
+\includeanswer{q5a}
+
+\subq{b}{5} Kale observed that after a while her loss would stay at a non-zero level, and it is quite ``bumpy'' -- the loss does not decrease monotonically but instead has small fluctuations. Should she be worried about this? Why does this ``bumpiness'' exist? Can training for longer still be valuable for improving the model performance in her case?
+
+\answerbox{}{
+% Your answer here
+\vspace{5cm} % comment this line out after you put in your answers
+}
+\includeanswer{q5b}
+
+\subq{c}{5} After the model fully converged, Kale obtained these samples shown below. What is her bug and how to fix it?
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.5\textwidth]{figures/q5c.png}
+    \caption{The samples that Kale obtained.}
+\end{figure}
+
+\answerbox{}{
+% Your answer here
+\vspace{2cm} % comment this line out after you put in your answers
+}
+\includeanswer{q5c}

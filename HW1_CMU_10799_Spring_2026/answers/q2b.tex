@@ -1,0 +1,18 @@
+\textbf{Data Augmentation Strategy:} Given the filtered nature of our dataset (young, beardless faces), I propose a \textbf{conservative set of augmentations}:
+
+\begin{enumerate}
+    \item \textbf{Random Horizontal Flips (50\% probability)}: This is safe because facial symmetry is important for face generation, but horizontal flips preserve all the key attributes (young, no beard, etc.).
+    
+    \item \textbf{Small Random Rotations (-10° to +10°)}: Very slight rotations can help the model learn slight head poses while preserving the fundamental attributes. Too large rotations would be unrealistic.
+    
+    \item \textbf{Mild Color/Brightness Jittering}: Small adjustments to brightness and contrast simulate different lighting conditions, which is common in real photography and helps with generalization.
+    
+    \item \textbf{Avoid Aggressive Transformations}: I would \textbf{avoid}:
+    \begin{itemize}
+        \item Random crops (loses important facial information)
+        \item Large rotations or perspective transforms (creates unrealistic face angles)
+        \item Aggressive color shifts (could alter skin tone representation)
+    \end{itemize}
+\end{enumerate}
+
+\textbf{Why?} Face generation requires preserving fine spatial relationships (eyes, nose, mouth alignment). Our filtered dataset is already somewhat limited (~64K images), so overly aggressive augmentations could introduce artifacts or make the training task harder. Conservative augmentations help with generalization and lighting invariance without distorting facial geometry.

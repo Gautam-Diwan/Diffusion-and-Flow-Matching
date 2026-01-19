@@ -21,8 +21,7 @@ app = modal.App("cmu-10799-diffusion")
 # This mirrors the CPU-only environment (environments/environment-cpu.yml)
 # but installs GPU-enabled PyTorch automatically on Modal's GPU machines
 image = (
-    modal.Image.debian_slim(python_version="3.11")
-    .pip_install(
+    modal.Image.debian_slim(python_version="3.11").pip_install(
         "torch>=2.0.0",
         "torchvision>=0.15.0",
         "numpy>=1.21.0",
@@ -36,7 +35,22 @@ image = (
         "torch-fidelity>=0.3.0",  # Comprehensive evaluation metrics
     )
     # Copy the local project directory into the image
-    .add_local_dir(".", "/root", ignore=[".git", ".venv*", "venv", "__pycache__", "logs", "checkpoints", "*.md", "docs", "environments", "notebooks"])
+    .add_local_dir(
+        ".",
+        "/root",
+        ignore=[
+            ".git",
+            ".venv*",
+            "venv",
+            "__pycache__",
+            "logs",
+            "checkpoints",
+            "*.md",
+            "docs",
+            "environments",
+            "notebooks",
+        ],
+    )
 )
 
 # Create a persistent volume for checkpoints and data
@@ -45,6 +59,7 @@ volume = modal.Volume.from_name("cmu-10799-diffusion-data", create_if_missing=Tr
 # =============================================================================
 # Training Function
 # =============================================================================
+
 
 def _train_impl(
     method: str,
@@ -76,38 +91,38 @@ def _train_impl(
         config_path = f"/root/{config_path}"
         config_tag = os.path.splitext(os.path.basename(config_path))[0]
 
-    with open(config_path, 'r') as f:
+    with open(config_path, "r") as f:
         config = yaml.safe_load(f)
 
     # Get num_gpus from config
-    config_device = config['infrastructure'].get('device', 'cuda')
-    num_gpus = config['infrastructure'].get('num_gpus', 1 if config_device == 'cuda' else 0)
+    config_device = config["infrastructure"].get("device", "cuda")
+    num_gpus = config["infrastructure"].get("num_gpus", 1 if config_device == "cuda" else 0)
     if num_gpus is None:
-        num_gpus = 1 if config_device == 'cuda' else 0
+        num_gpus = 1 if config_device == "cuda" else 0
 
     # Read from_hub from config
-    from_hub = config['data'].get('from_hub', False)
+    from_hub = config["data"].get("from_hub", False)
 
     # Apply command-line overrides if provided
     if num_iterations is not None:
-        config['training']['num_iterations'] = num_iterations
+        config["training"]["num_iterations"] = num_iterations
     if batch_size is not None:
-        config['training']['batch_size'] = batch_size
+        config["training"]["batch_size"] = batch_size
     if learning_rate is not None:
-        config['training']['learning_rate'] = learning_rate
+        config["training"]["learning_rate"] = learning_rate
 
     # Set Modal-specific paths
-    config['data']['repo_name'] = "electronickale/cmu-10799-celeba64-subset"
+    config["data"]["repo_name"] = "electronickale/cmu-10799-celeba64-subset"
     # Set root path for both modes:
     # - from_hub=true: checks for cached Arrow format first, then downloads from HF
     # - from_hub=false: looks for traditional folder structure (train/images/)
-    config['data']['root'] = "/data/celeba"
-    config['checkpoint']['dir'] = f"/data/checkpoints/{config_tag}"
-    config['logging']['dir'] = f"/data/logs/{config_tag}"
+    config["data"]["root"] = "/data/celeba"
+    config["checkpoint"]["dir"] = f"/data/checkpoints/{config_tag}"
+    config["logging"]["dir"] = f"/data/logs/{config_tag}"
 
     # Create directories
-    os.makedirs(config['checkpoint']['dir'], exist_ok=True)
-    os.makedirs(config['logging']['dir'], exist_ok=True)
+    os.makedirs(config["checkpoint"]["dir"], exist_ok=True)
+    os.makedirs(config["logging"]["dir"], exist_ok=True)
 
     resume_path = f"/data/{resume_from}" if resume_from else None
 
@@ -124,8 +139,10 @@ def _train_impl(
                 "--standalone",
                 f"--nproc_per_node={num_gpus}",
                 "/root/train.py",
-                "--method", method,
-                "--config", temp_config_path,
+                "--method",
+                method,
+                "--config",
+                temp_config_path,
             ]
             if resume_path:
                 cmd.extend(["--resume", resume_path])
@@ -138,44 +155,234 @@ def _train_impl(
                 os.remove(temp_config_path)
     else:
         from train import train as run_training
-        run_training(method_name=method, config=config, resume_path=resume_path, overfit_single_batch=overfit_single_batch)
+
+        run_training(
+            method_name=method,
+            config=config,
+            resume_path=resume_path,
+            overfit_single_batch=overfit_single_batch,
+        )
 
     volume.commit()
     return f"Training complete! Checkpoints saved to /data/checkpoints/{method}"
 
 
 # Create training functions for different GPU counts
-@app.function(image=image, gpu="L40S:1", timeout=60*60*12, volumes={"/data": volume}, secrets=[modal.Secret.from_name("wandb-api-key")])
-def train_1gpu(method: str = "ddpm", config_path: str = None, resume_from: str = None, num_iterations: int = None, batch_size: int = None, learning_rate: float = None, overfit_single_batch: bool = False):
-    return _train_impl(method, config_path, resume_from, num_iterations, batch_size, learning_rate, overfit_single_batch)
+@app.function(
+    image=image,
+    gpu="L40S:1",
+    timeout=60 * 60 * 12,
+    volumes={"/data": volume},
+    secrets=[modal.Secret.from_name("wandb-api-key")],
+)
+def train_1gpu(
+    method: str = "ddpm",
+    config_path: str = None,
+    resume_from: str = None,
+    num_iterations: int = None,
+    batch_size: int = None,
+    learning_rate: float = None,
+    overfit_single_batch: bool = False,
+):
+    return _train_impl(
+        method,
+        config_path,
+        resume_from,
+        num_iterations,
+        batch_size,
+        learning_rate,
+        overfit_single_batch,
+    )
 
-@app.function(image=image, gpu="L40S:2", timeout=60*60*12, volumes={"/data": volume}, secrets=[modal.Secret.from_name("wandb-api-key")])
-def train_2gpu(method: str = "ddpm", config_path: str = None, resume_from: str = None, num_iterations: int = None, batch_size: int = None, learning_rate: float = None, overfit_single_batch: bool = False):
-    return _train_impl(method, config_path, resume_from, num_iterations, batch_size, learning_rate, overfit_single_batch)
 
-@app.function(image=image, gpu="L40S:3", timeout=60*60*12, volumes={"/data": volume}, secrets=[modal.Secret.from_name("wandb-api-key")])
-def train_3gpu(method: str = "ddpm", config_path: str = None, resume_from: str = None, num_iterations: int = None, batch_size: int = None, learning_rate: float = None, overfit_single_batch: bool = False):
-    return _train_impl(method, config_path, resume_from, num_iterations, batch_size, learning_rate, overfit_single_batch)
+@app.function(
+    image=image,
+    gpu="L40S:2",
+    timeout=60 * 60 * 12,
+    volumes={"/data": volume},
+    secrets=[modal.Secret.from_name("wandb-api-key")],
+)
+def train_2gpu(
+    method: str = "ddpm",
+    config_path: str = None,
+    resume_from: str = None,
+    num_iterations: int = None,
+    batch_size: int = None,
+    learning_rate: float = None,
+    overfit_single_batch: bool = False,
+):
+    return _train_impl(
+        method,
+        config_path,
+        resume_from,
+        num_iterations,
+        batch_size,
+        learning_rate,
+        overfit_single_batch,
+    )
 
-@app.function(image=image, gpu="L40S:4", timeout=60*60*12, volumes={"/data": volume}, secrets=[modal.Secret.from_name("wandb-api-key")])
-def train_4gpu(method: str = "ddpm", config_path: str = None, resume_from: str = None, num_iterations: int = None, batch_size: int = None, learning_rate: float = None, overfit_single_batch: bool = False):
-    return _train_impl(method, config_path, resume_from, num_iterations, batch_size, learning_rate, overfit_single_batch)
 
-@app.function(image=image, gpu="L40S:5", timeout=60*60*12, volumes={"/data": volume}, secrets=[modal.Secret.from_name("wandb-api-key")])
-def train_5gpu(method: str = "ddpm", config_path: str = None, resume_from: str = None, num_iterations: int = None, batch_size: int = None, learning_rate: float = None, overfit_single_batch: bool = False):
-    return _train_impl(method, config_path, resume_from, num_iterations, batch_size, learning_rate, overfit_single_batch)
+@app.function(
+    image=image,
+    gpu="L40S:3",
+    timeout=60 * 60 * 12,
+    volumes={"/data": volume},
+    secrets=[modal.Secret.from_name("wandb-api-key")],
+)
+def train_3gpu(
+    method: str = "ddpm",
+    config_path: str = None,
+    resume_from: str = None,
+    num_iterations: int = None,
+    batch_size: int = None,
+    learning_rate: float = None,
+    overfit_single_batch: bool = False,
+):
+    return _train_impl(
+        method,
+        config_path,
+        resume_from,
+        num_iterations,
+        batch_size,
+        learning_rate,
+        overfit_single_batch,
+    )
 
-@app.function(image=image, gpu="L40S:6", timeout=60*60*12, volumes={"/data": volume}, secrets=[modal.Secret.from_name("wandb-api-key")])
-def train_6gpu(method: str = "ddpm", config_path: str = None, resume_from: str = None, num_iterations: int = None, batch_size: int = None, learning_rate: float = None, overfit_single_batch: bool = False):
-    return _train_impl(method, config_path, resume_from, num_iterations, batch_size, learning_rate, overfit_single_batch)
 
-@app.function(image=image, gpu="L40S:7", timeout=60*60*12, volumes={"/data": volume}, secrets=[modal.Secret.from_name("wandb-api-key")])
-def train_7gpu(method: str = "ddpm", config_path: str = None, resume_from: str = None, num_iterations: int = None, batch_size: int = None, learning_rate: float = None, overfit_single_batch: bool = False):
-    return _train_impl(method, config_path, resume_from, num_iterations, batch_size, learning_rate, overfit_single_batch)
+@app.function(
+    image=image,
+    gpu="L40S:4",
+    timeout=60 * 60 * 12,
+    volumes={"/data": volume},
+    secrets=[modal.Secret.from_name("wandb-api-key")],
+)
+def train_4gpu(
+    method: str = "ddpm",
+    config_path: str = None,
+    resume_from: str = None,
+    num_iterations: int = None,
+    batch_size: int = None,
+    learning_rate: float = None,
+    overfit_single_batch: bool = False,
+):
+    return _train_impl(
+        method,
+        config_path,
+        resume_from,
+        num_iterations,
+        batch_size,
+        learning_rate,
+        overfit_single_batch,
+    )
 
-@app.function(image=image, gpu="L40S:8", timeout=60*60*12, volumes={"/data": volume}, secrets=[modal.Secret.from_name("wandb-api-key")])
-def train_8gpu(method: str = "ddpm", config_path: str = None, resume_from: str = None, num_iterations: int = None, batch_size: int = None, learning_rate: float = None, overfit_single_batch: bool = False):
-    return _train_impl(method, config_path, resume_from, num_iterations, batch_size, learning_rate, overfit_single_batch)
+
+@app.function(
+    image=image,
+    gpu="L40S:5",
+    timeout=60 * 60 * 12,
+    volumes={"/data": volume},
+    secrets=[modal.Secret.from_name("wandb-api-key")],
+)
+def train_5gpu(
+    method: str = "ddpm",
+    config_path: str = None,
+    resume_from: str = None,
+    num_iterations: int = None,
+    batch_size: int = None,
+    learning_rate: float = None,
+    overfit_single_batch: bool = False,
+):
+    return _train_impl(
+        method,
+        config_path,
+        resume_from,
+        num_iterations,
+        batch_size,
+        learning_rate,
+        overfit_single_batch,
+    )
+
+
+@app.function(
+    image=image,
+    gpu="L40S:6",
+    timeout=60 * 60 * 12,
+    volumes={"/data": volume},
+    secrets=[modal.Secret.from_name("wandb-api-key")],
+)
+def train_6gpu(
+    method: str = "ddpm",
+    config_path: str = None,
+    resume_from: str = None,
+    num_iterations: int = None,
+    batch_size: int = None,
+    learning_rate: float = None,
+    overfit_single_batch: bool = False,
+):
+    return _train_impl(
+        method,
+        config_path,
+        resume_from,
+        num_iterations,
+        batch_size,
+        learning_rate,
+        overfit_single_batch,
+    )
+
+
+@app.function(
+    image=image,
+    gpu="L40S:7",
+    timeout=60 * 60 * 12,
+    volumes={"/data": volume},
+    secrets=[modal.Secret.from_name("wandb-api-key")],
+)
+def train_7gpu(
+    method: str = "ddpm",
+    config_path: str = None,
+    resume_from: str = None,
+    num_iterations: int = None,
+    batch_size: int = None,
+    learning_rate: float = None,
+    overfit_single_batch: bool = False,
+):
+    return _train_impl(
+        method,
+        config_path,
+        resume_from,
+        num_iterations,
+        batch_size,
+        learning_rate,
+        overfit_single_batch,
+    )
+
+
+@app.function(
+    image=image,
+    gpu="L40S:8",
+    timeout=60 * 60 * 12,
+    volumes={"/data": volume},
+    secrets=[modal.Secret.from_name("wandb-api-key")],
+)
+def train_8gpu(
+    method: str = "ddpm",
+    config_path: str = None,
+    resume_from: str = None,
+    num_iterations: int = None,
+    batch_size: int = None,
+    learning_rate: float = None,
+    overfit_single_batch: bool = False,
+):
+    return _train_impl(
+        method,
+        config_path,
+        resume_from,
+        num_iterations,
+        batch_size,
+        learning_rate,
+        overfit_single_batch,
+    )
+
 
 # Map GPU counts to functions
 TRAIN_FUNCTIONS = {
@@ -193,6 +400,7 @@ TRAIN_FUNCTIONS = {
 # =============================================================================
 # Sampling Function
 # =============================================================================
+
 
 @app.function(
     image=image,
@@ -224,11 +432,15 @@ def sample(
 
     # Build command to run sample.py
     cmd = [
-        "python", "/root/sample.py",
-        "--checkpoint", checkpoint_path,
-        "--method", method,
+        "python",
+        "/root/sample.py",
+        "--checkpoint",
+        checkpoint_path,
+        "--method",
+        method,
         "--grid",
-        "--output", output_path,
+        "--output",
+        output_path,
     ]
 
     if num_samples is not None:
@@ -246,6 +458,7 @@ def sample(
 # Dataset Download Function
 # =============================================================================
 
+
 @app.function(
     image=image,
     timeout=60 * 60,  # 1 hour
@@ -260,6 +473,7 @@ def download_dataset():
     instead of redownloading.
     """
     import sys
+
     sys.path.insert(0, "/root")
 
     from datasets import load_dataset
@@ -282,6 +496,7 @@ def download_dataset():
 # =============================================================================
 # Evaluation Function (using torch-fidelity)
 # =============================================================================
+
 
 @app.function(
     image=image,
@@ -315,6 +530,7 @@ def evaluate_torch_fidelity(
     import sys
     import subprocess
     from pathlib import Path
+
     sys.path.insert(0, "/root")
 
     checkpoint_path = f"/data/{checkpoint}"
@@ -331,6 +547,7 @@ def evaluate_torch_fidelity(
 
     # Extract images from Arrow format if not already done
     import os
+
     if not os.path.exists(dataset_images_path):
         print("=" * 60)
         print("Extracting dataset images for torch-fidelity...")
@@ -339,13 +556,13 @@ def evaluate_torch_fidelity(
         from datasets import load_from_disk
 
         dataset = load_from_disk(dataset_arrow_path)
-        train_data = dataset['train']
+        train_data = dataset["train"]
 
         os.makedirs(dataset_images_path, exist_ok=True)
 
         print(f"Extracting {len(train_data)} images...")
         for idx, item in enumerate(train_data):
-            img = item['image']
+            img = item["image"]
             img_path = os.path.join(dataset_images_path, f"{idx:06d}.png")
             img.save(img_path)
 
@@ -373,9 +590,9 @@ def evaluate_torch_fidelity(
     if os.path.exists(generated_dir) and not override:
         # Check for both png and jpg files
         existing_samples = (
-            glob.glob(os.path.join(generated_dir, "*.png")) +
-            glob.glob(os.path.join(generated_dir, "*.jpg")) + 
-            glob.glob(os.path.join(generated_dir, "*.jpeg"))
+            glob.glob(os.path.join(generated_dir, "*.png"))
+            + glob.glob(os.path.join(generated_dir, "*.jpg"))
+            + glob.glob(os.path.join(generated_dir, "*.jpeg"))
         )
         num_existing = len(existing_samples)
 
@@ -393,12 +610,18 @@ def evaluate_torch_fidelity(
 
     if need_generation:
         sample_cmd = [
-            "python", "/root/sample.py",
-            "--checkpoint", checkpoint_path,
-            "--method", method,
-            "--output_dir", generated_dir,
-            "--num_samples", str(num_samples),
-            "--batch_size", str(batch_size),
+            "python",
+            "/root/sample.py",
+            "--checkpoint",
+            checkpoint_path,
+            "--method",
+            method,
+            "--output_dir",
+            generated_dir,
+            "--num_samples",
+            str(num_samples),
+            "--batch_size",
+            str(batch_size),
         ]
 
         if num_steps:
@@ -418,11 +641,16 @@ def evaluate_torch_fidelity(
 
     fidelity_cmd = [
         "fidelity",
-        "--gpu", "0",
-        "--batch-size", str(batch_size),
-        "--cache-root", cache_dir,
-        "--input1", generated_dir,
-        "--input2", dataset_path,
+        "--gpu",
+        "0",
+        "--batch-size",
+        str(batch_size),
+        "--cache-root",
+        cache_dir,
+        "--input1",
+        generated_dir,
+        "--input2",
+        dataset_path,
     ]
 
     if "fid" in metrics:
@@ -454,6 +682,7 @@ def evaluate_torch_fidelity(
 # CLI Entry Points
 # =============================================================================
 
+
 @app.local_entrypoint()
 def main(
     action: str = "train",
@@ -484,22 +713,21 @@ def main(
         import yaml
 
         local_config_path = config or f"configs/{method}.yaml"
-        with open(local_config_path, 'r') as f:
+        with open(local_config_path, "r") as f:
             local_config = yaml.safe_load(f)
 
         # Get num_gpus from config
-        config_device = local_config['infrastructure'].get('device', 'cuda')
-        num_gpus = local_config['infrastructure'].get('num_gpus', 1 if config_device == 'cuda' else 0)
+        config_device = local_config["infrastructure"].get("device", "cuda")
+        num_gpus = local_config["infrastructure"].get(
+            "num_gpus", 1 if config_device == "cuda" else 0
+        )
         if num_gpus is None:
-            num_gpus = 1 if config_device == 'cuda' else 0
+            num_gpus = 1 if config_device == "cuda" else 0
 
         # Get the appropriate training function
         train_fn = TRAIN_FUNCTIONS.get(num_gpus)
         if train_fn is None:
-            raise ValueError(
-                f"Unsupported num_gpus={num_gpus} in config. "
-                f"Supported: 1-8"
-            )
+            raise ValueError(f"Unsupported num_gpus={num_gpus} in config. " f"Supported: 1-8")
 
         result = train_fn.remote(
             method=method,
@@ -525,18 +753,18 @@ def main(
             checkpoint = f"checkpoints/{method}/{method}_final.pt"
 
         eval_kwargs = {
-            'method': method,
-            'checkpoint': checkpoint,
-            'override': override,
+            "method": method,
+            "checkpoint": checkpoint,
+            "override": override,
         }
         if metrics is not None:
-            eval_kwargs['metrics'] = metrics
+            eval_kwargs["metrics"] = metrics
         if num_samples is not None:
-            eval_kwargs['num_samples'] = num_samples
+            eval_kwargs["num_samples"] = num_samples
         if batch_size is not None:
-            eval_kwargs['batch_size'] = batch_size
+            eval_kwargs["batch_size"] = batch_size
         if num_steps is not None:
-            eval_kwargs['num_steps'] = num_steps
+            eval_kwargs["num_steps"] = num_steps
 
         result = evaluate_torch_fidelity.remote(**eval_kwargs)
         print(result)

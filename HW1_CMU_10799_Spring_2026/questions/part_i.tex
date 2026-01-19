@@ -1,0 +1,41 @@
+
+\hwpart{I}{Understanding Your Data (10 points)}
+Since the goal for generative modeling is to model the distribution of your data, it is important to first understand what does this distribution look like.
+
+The dataset for this course is a custom subset of CelebA~\citep{liu2015faceattributes}, filtered to have specific properties. Your first task is to discover what those properties are.
+
+\question{Visual Exploration}{5}
+
+\subq{a}{2} Visualize a grid of at least 16 random samples from the training set. Include this grid below.
+
+\answerbox{}{
+% Your answer here
+\vspace{9cm} % comment this line out after you put in your answers
+}
+\includeanswer{q1a}
+
+\subq{c}{3} This dataset was filtered from full CelebA using their 40 binary attributes. Based on your visual exploration, hypothesize which attributes were likely used to create this subset. What filtering criteria were used to create this subset? Why?
+
+\answerbox{}{
+% Your answer here
+\vspace{3cm} % comment this line out after you put in your answers
+}
+\includeanswer{q1b}
+
+\question{What did you learn?}{5}
+
+\subq{a}{3} Imagine you found a pre-trained diffusion model that can reach SOTA performance on full CelebA (200K diverse faces). Now you generated samples and compared them to this filtered subset using KID or FID. Would you expect the FID and KID score to still be SOTA? Why?
+\answerbox{}{
+% Your answer here
+\vspace{3cm} % comment this line out after you put in your answers
+}
+\includeanswer{q2a}
+
+\subq{b}{2} Based on your exploration, what kind of data augmentation transformation do you plan to use for your training and why?
+\answerbox{}{
+% Your answer here
+\vspace{3cm} % comment this line out after you put in your answers
+}
+\includeanswer{q2b}
+
+% ----------------------------------------------------------------------------
