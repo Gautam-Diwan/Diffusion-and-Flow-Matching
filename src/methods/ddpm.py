@@ -149,7 +149,10 @@ class DDPM(BaseMethod):
         # MSE loss
         loss = F.mse_loss(noise_pred, noise)
 
-        metrics: Dict[str, float] = {"mse": loss.item()}
+        metrics: Dict[str, float] = {
+            "loss": loss.item(),
+            "mse": loss.item(),
+        }
 
         return loss, metrics
 
@@ -298,7 +301,7 @@ class DDPM(BaseMethod):
         return cls(
             model=model,
             device=device,
-            num_timesteps=ddpm_config["num_timesteps"],
-            beta_start=ddpm_config["beta_start"],
-            beta_end=ddpm_config["beta_end"],
+            num_timesteps=int(ddpm_config["num_timesteps"]),
+            beta_start=float(ddpm_config["beta_start"]),
+            beta_end=float(ddpm_config["beta_end"]),
         )

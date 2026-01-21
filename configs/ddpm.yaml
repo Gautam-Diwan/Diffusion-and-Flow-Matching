@@ -1,0 +1,63 @@
+data:
+  dataset: "celeba"
+  root: "/data/celeba"
+  from_hub: true  # run "modal run modal_app.py --action download" first, huggingface will use the arrow files that you pre-download afterwards
+  repo_name: "electronickale/cmu-10799-celeba64-subset"
+  image_size: 64
+  channels: 3
+  num_workers: 4
+  pin_memory: true
+  augment: true
+
+# TODO: build your model architecture, feel free to add or exclude any of these options
+model:
+  base_channels: 128 # int
+  channel_mult: [1, 2, 2, 4] # list of int [1, 2, 2, 4]
+  num_res_blocks: 2 # TODO
+  attention_resolutions: [8, 16] # list of int
+  num_heads: 4 # int
+  dropout: 0.1 # float
+  use_scale_shift_norm: true # bool
+
+# TODO: your training hyperparameters, feel free to add or exclude any of these options
+training:
+  batch_size: 128 # int
+  learning_rate: 2e-4 # float
+  weight_decay: 0.0 # float
+  betas: [0.9, 0.999] # list of float
+  ema_decay: 0.9999 # float
+  ema_start: 1000 # int # This is the start iter to use EMA during sampling at training time, as using EMA at the beginning may not be very meaningful
+  gradient_clip_norm: 1.0 # float
+  num_iterations: 100000 # int
+  log_every: 100 # int
+  sample_every: 1000 # int
+  save_every: 5000 # int
+  num_samples: 16 # int
+
+# TODO: your ddpm algorithm hyperparameters, feel free to add or exclude any of these options
+ddpm:
+  num_timesteps: 1000 # int
+  beta_start: 1e-4 # float
+  beta_end: 2e-2 # float
+
+sampling:
+  num_steps: 1000 # int
+  sampler: "ddpm" # for the first hw we only need ddpm sampling, this is a placeholder where you can add more options yourself later
+
+infrastructure:
+  seed: 42
+  device: "cuda"
+  num_gpus: 1 # int # 1 should be ok
+  mixed_precision: true # bool # both true and false should work
+  compile_model: false # only tested false
+
+checkpoint:
+  dir: "./checkpoints"
+  resume: null
+
+logging:
+  dir: "./logs"
+  wandb:
+    enabled: true
+    project: "cmu-10799-diffusion"
+    entity: null
