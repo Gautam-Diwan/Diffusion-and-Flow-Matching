@@ -145,9 +145,9 @@ def create_optimizer(model: nn.Module, config: dict) -> torch.optim.Optimizer:
     training_config = config['training']
     optimizer = torch.optim.AdamW(
         model.parameters(),
-        lr=training_config['learning_rate'],
-        betas=tuple(training_config['betas']),
-        weight_decay=training_config['weight_decay'],
+        lr=float(training_config['learning_rate']),
+        betas=tuple(float(b) for b in training_config['betas']),
+        weight_decay=float(training_config['weight_decay']),
     )
     return optimizer
 
@@ -232,13 +232,13 @@ def generate_samples(
     """
     method.eval_mode()
 
-    ema_start = config.get('training', {}).get('ema_start', 0)
+    ema_start = int(config.get('training', {}).get('ema_start', 0))
     use_ema = ema is not None and (current_step is None or current_step >= ema_start)
     if use_ema:
         ema.apply_shadow()
 
-    samples = None
-    # TODO: sample with your method.sample()
+    # Generate samples using the method's sample() function
+    samples = method.sample(batch_size=num_samples, image_shape=image_shape, **sampling_kwargs)
 
     if use_ema:
         ema.restore()
@@ -253,15 +253,22 @@ def save_samples(
     num_samples: int,
 ) -> None:
     """
-    TODO: save generated samples as images.
+    Save generated samples as images.
 
     Args:
         samples: Generated samples tensor with shape (num_samples, C, H, W).
         save_path: File path to save the image grid.
         num_samples: Number of samples, used to calculate grid layout.
     """
-
-    raise NotImplementedError
+    # Ensure parent directory exists
+    os.makedirs(os.path.dirname(save_path), exist_ok=True)
+    
+    # Samples are in [-1, 1] range, save_image handles this
+    # Calculate grid layout based on number of samples
+    nrow = int(math.ceil(math.sqrt(num_samples)))
+    
+    # Save the image grid
+    save_image(samples, save_path, nrow=nrow)
 
 
 def train(
@@ -336,7 +343,7 @@ def train(
         print("=" * 60)
 
     # Set seed for reproducibility
-    seed = config['infrastructure']['seed']
+    seed = int(config['infrastructure']['seed'])
     torch.manual_seed(seed)  # Same seed for all ranks for model init
     if torch.cuda.is_available():
         torch.cuda.manual_seed(seed)
@@ -359,9 +366,9 @@ def train(
         )
         dataloader = DataLoader(
             dataloader.dataset,
-            batch_size=training_config['batch_size'],
+            batch_size=int(training_config['batch_size']),
             sampler=sampler,
-            num_workers=data_config['num_workers'],
+            num_workers=int(data_config['num_workers']),
             pin_memory=data_config['pin_memory'],
             drop_last=True,
         )
@@ -404,7 +411,7 @@ def train(
     optimizer = create_optimizer(model, config) # default to AdamW optimizer
 
     # Create EMA
-    ema = EMA(unwrap_model(model), decay=config['training']['ema_decay'])
+    ema = EMA(unwrap_model(model), decay=float(config['training']['ema_decay']))
 
     # Create gradient scaler for mixed precision
     # Determine device type for GradScaler (cuda or cpu)
@@ -441,15 +448,15 @@ def train(
         start_step = load_checkpoint(resume_path, model, optimizer, ema, scaler, device)
     
     # Training config
-    num_iterations = training_config['num_iterations']
-    log_every = training_config['log_every']
-    sample_every = training_config['sample_every']
-    save_every = training_config['save_every']
-    num_samples = training_config['num_samples']
-    gradient_clip_norm = training_config['gradient_clip_norm']
+    num_iterations = int(training_config['num_iterations'])
+    log_every = int(training_config['log_every'])
+    sample_every = int(training_config['sample_every'])
+    save_every = int(training_config['save_every'])
+    num_samples = int(training_config['num_samples'])
+    gradient_clip_norm = float(training_config['gradient_clip_norm'])
     
     # Image shape for sampling
-    image_shape = (data_config['channels'], data_config['image_size'], data_config['image_size'])
+    image_shape = (int(data_config['channels']), int(data_config['image_size']), int(data_config['image_size']))
     
     # Training loop
     if is_main_process:
@@ -478,7 +485,7 @@ def train(
 
         # Replicate to match desired batch size
         base_batch_size = single_batch_base.shape[0]
-        desired_batch_size = training_config['batch_size']
+        desired_batch_size = int(training_config['batch_size'])
 
         if desired_batch_size > base_batch_size:
             # Replicate the batch to reach desired size

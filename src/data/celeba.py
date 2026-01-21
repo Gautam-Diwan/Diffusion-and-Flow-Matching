@@ -235,13 +235,16 @@ class CelebADataset(Dataset):
         """Build the preprocessing transforms."""
         transform_list = []
 
-        # TODO: write your image transforms & augmentation
+        # Convert PIL image to tensor (0-1 range)
+        transform_list.append(transforms.ToTensor())
 
-        # Only resize if needed (dataset images are already 64x64)
+        # Normalize to [-1, 1] range (mean=0.5, std=0.5 converts [0,1] to [-1,1])
+        transform_list.append(transforms.Normalize(mean=0.5, std=0.5))
 
-        # For Data augmentation you can do something like
-        # if self.augment and self.split == "train":
-        #     transform_list.append(...)
+        # Data augmentation for training
+        if self.augment and self.split == "train":
+            # Random horizontal flip
+            transform_list.insert(0, transforms.RandomHorizontalFlip(p=0.5))
 
         return transforms.Compose(transform_list)
 
