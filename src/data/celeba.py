@@ -239,7 +239,7 @@ class CelebADataset(Dataset):
         transform_list.append(transforms.ToTensor())
 
         # Normalize to [-1, 1] range (mean=0.5, std=0.5 converts [0,1] to [-1,1])
-        transform_list.append(transforms.Normalize(mean=0.5, std=0.5))
+        transform_list.append(transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]))
 
         # Data augmentation for training
         if self.augment and self.split == "train":

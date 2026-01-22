@@ -732,6 +732,7 @@ def main(
         result = train_fn.remote(
             method=method,
             config_path=config,
+            resume_from=checkpoint,  # ADD THIS LINE
             num_iterations=iterations,
             batch_size=batch_size,
             learning_rate=learning_rate,

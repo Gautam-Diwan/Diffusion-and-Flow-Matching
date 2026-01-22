@@ -158,6 +158,7 @@ def save_checkpoint(
     optimizer: torch.optim.Optimizer,
     ema: Optional[EMA],
     scaler: GradScaler,
+    scheduler: torch.optim.lr_scheduler.LRScheduler,
     step: int,
     config: dict,
 ):
@@ -167,6 +168,7 @@ def save_checkpoint(
         'model': model_to_save.state_dict(),
         'optimizer': optimizer.state_dict(),
         'scaler': scaler.state_dict(),
+        'scheduler': scheduler.state_dict(),
         'step': step,
         'config': config,
     }
@@ -182,6 +184,7 @@ def load_checkpoint(
     optimizer: torch.optim.Optimizer,
     ema: Optional[EMA],
     scaler: GradScaler,
+    scheduler: torch.optim.lr_scheduler.LRScheduler,
     device: torch.device,
 ) -> int:
     """Load training checkpoint and return the step."""
@@ -191,6 +194,8 @@ def load_checkpoint(
     if ema is not None and 'ema' in checkpoint:
         ema.load_state_dict(checkpoint['ema'])
     scaler.load_state_dict(checkpoint['scaler'])
+    if 'scheduler' in checkpoint:
+        scheduler.load_state_dict(checkpoint['scheduler'])
     step = checkpoint['step']
     print(f"Loaded checkpoint from {path} at step {step}")
     return step
@@ -232,16 +237,9 @@ def generate_samples(
     """
     method.eval_mode()
 
-    ema_start = int(config.get('training', {}).get('ema_start', 0))
-    use_ema = ema is not None and (current_step is None or current_step >= ema_start)
-    if use_ema:
-        ema.apply_shadow()
-
-    # Generate samples using the method's sample() function
+    # During training, always use the regular model (not EMA)
+    # EMA parameters are unstable early in training and should only be used for final evaluation
     samples = method.sample(batch_size=num_samples, image_shape=image_shape, **sampling_kwargs)
-
-    if use_ema:
-        ema.restore()
 
     method.train_mode()
     return samples
@@ -410,6 +408,16 @@ def train(
     # Create optimizer
     optimizer = create_optimizer(model, config) # default to AdamW optimizer
 
+    # Create learning rate scheduler
+    # Cosine annealing with warmup is standard for diffusion models
+    num_iterations = int(training_config['num_iterations'])
+    warmup_iters = int(training_config.get('warmup_iters', 5000))  # 5% warmup by default
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+        optimizer,
+        T_max=num_iterations - warmup_iters,
+        eta_min=1e-6
+    )
+
     # Create EMA
     ema = EMA(unwrap_model(model), decay=float(config['training']['ema_decay']))
 
@@ -445,7 +453,7 @@ def train(
         # Barrier to ensure all processes wait before loading checkpoint
         if is_distributed:
             dist.barrier()
-        start_step = load_checkpoint(resume_path, model, optimizer, ema, scaler, device)
+        start_step = load_checkpoint(resume_path, model, optimizer, ema, scaler, scheduler, device)
     
     # Training config
     num_iterations = int(training_config['num_iterations'])
@@ -547,8 +555,14 @@ def train(
         scaler.step(optimizer)
         scaler.update()
 
-        # EMA update - DISABLED
-        ema.update()
+        # Learning rate schedule step (after warmup)
+        if step >= warmup_iters:
+            scheduler.step()
+
+        # EMA update - only after ema_start
+        ema_start = int(config['training'].get('ema_start', 0))
+        if step >= ema_start:
+            ema.update()
         
         # Accumulate metrics (store raw values, will reduce when logging)
         for k, v in metrics.items():
@@ -633,7 +647,7 @@ def train(
         if (step + 1) % save_every == 0:
             if is_main_process:
                 checkpoint_path = os.path.join(log_dir, 'checkpoints', f'{method_name}_{step + 1:07d}.pt')
-                save_checkpoint(checkpoint_path, model, optimizer, ema, scaler, step + 1, config)
+                save_checkpoint(checkpoint_path, model, optimizer, ema, scaler, scheduler, step + 1, config)
 
             # Barrier to synchronize all processes after checkpoint save
             if is_distributed:
@@ -642,7 +656,7 @@ def train(
     # Save final checkpoint
     if is_main_process:
         final_path = os.path.join(log_dir, 'checkpoints', f'{method_name}_final.pt')
-        save_checkpoint(final_path, model, optimizer, ema, scaler, num_iterations, config)
+        save_checkpoint(final_path, model, optimizer, ema, scaler, scheduler, num_iterations, config)
 
         print("\nTraining complete!")
         print(f"Final checkpoint: {final_path}")

@@ -3,28 +3,12 @@ Sampling Script for DDPM (Denoising Diffusion Probabilistic Models)
 
 Generate samples from a trained model. By default, saves individual images to avoid
 memory issues with large sample counts. Use --grid to generate a single grid image.
-
-Usage:
-    # Sample from DDPM (saves individual images to ./samples/)
-    python sample.py --checkpoint checkpoints/ddpm_final.pt --method ddpm --num_samples 64
-
-    # With custom number of sampling steps
-    python sample.py --checkpoint checkpoints/ddpm_final.pt --method ddpm --num_steps 500
-
-    # Generate a grid image instead of individual images
-    python sample.py --checkpoint checkpoints/ddpm_final.pt --method ddpm --num_samples 64 --grid
-
-    # Save individual images to custom directory
-    python sample.py --checkpoint checkpoints/ddpm_final.pt --method ddpm --output_dir my_samples
-
-What you need to implement:
-- Incorporate your sampling scheme to this pipeline
-- Save generated samples as images for logging
 """
 
 import os
 import sys
 import argparse
+import math  # Added math for grid calculation
 from datetime import datetime
 
 import yaml
@@ -57,17 +41,33 @@ def save_samples(
     samples: torch.Tensor,
     save_path: str,
     num_samples: int,
+    nrow: int = None,
 ) -> None:
     """
-    TODO: save generated samples as images.
+    Save generated samples as images. Unnormalizes from [-1, 1] to [0, 1].
 
     Args:
         samples: Generated samples tensor with shape (num_samples, C, H, W).
         save_path: File path to save the image grid.
-        num_samples: Number of samples, used to calculate grid layout.
+        num_samples: Number of samples.
+        nrow: Images per row for grids. If None, calculated automatically.
     """
+    # 1. Unnormalize: Convert from [-1, 1] range back to [0, 1]
+    # This fixes the "Dark Image" issue
+    samples = (samples + 1.0) / 2.0
 
-    raise NotImplementedError
+    # 2. Clamp to ensure numerical stability (keep within valid image range)
+    samples = torch.clamp(samples, 0.0, 1.0)
+
+    # 3. Calculate grid layout if not provided
+    if nrow is None:
+        if num_samples <= 1:
+            nrow = 1
+        else:
+            nrow = int(math.ceil(math.sqrt(num_samples)))
+    
+    # 4. Save using the helper from src.data
+    save_image(samples, save_path, nrow=nrow)
 
 
 def main():
@@ -166,7 +166,8 @@ def main():
             else:
                 for i in range(samples.shape[0]):
                     img_path = os.path.join(args.output_dir, f"{sample_idx:06d}.png")
-                    save_samples(samples, img_path, 1)
+                    # Pass single image (unsqueeze to make it 4D: 1, C, H, W)
+                    save_samples(samples[i].unsqueeze(0), img_path, 1)
                     sample_idx += 1
 
             remaining -= batch_size
@@ -183,7 +184,7 @@ def main():
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             args.output = f"samples_{timestamp}.png"
 
-        save_samples(all_samples, args.output, nrow=8)
+        save_samples(all_samples, args.output, num_samples=args.num_samples, nrow=8)
         print(f"Saved grid to {args.output}")
     else:
         print(f"Saved {args.num_samples} individual images to {args.output_dir}")
