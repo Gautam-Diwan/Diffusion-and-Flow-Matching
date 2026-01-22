@@ -174,43 +174,37 @@ class DDPM(BaseMethod):
         """
         # Predict noise
         noise_pred = self.model(x_t, t)
-
-        # Safe tensor indexing with cast
-        posterior_mean_coeff1 = cast(
-            torch.Tensor,
-            self.posterior_mean_coeff1
-        )
-        posterior_mean_coeff2 = cast(
-            torch.Tensor,
-            self.posterior_mean_coeff2
-        )
-        posterior_log_var_clipped = cast(
-            torch.Tensor,
-            self.posterior_log_var_clipped
-        )
-
+    
         # Extract coefficients
-        coeff1 = posterior_mean_coeff1[t]
-        coeff2 = posterior_mean_coeff2[t]
-        log_var = posterior_log_var_clipped[t]
-
+        alphas_cumprod = cast(torch.Tensor, self.alphas_cumprod)
+        sqrt_alphas_cumprod_t = torch.sqrt(alphas_cumprod[t])
+        sqrt_one_minus_alphas_cumprod_t = torch.sqrt(1.0 - alphas_cumprod[t])
+        
         # Reshape for broadcasting
         shape = [-1] + [1] * (len(x_t.shape) - 1)
-        coeff1 = coeff1.view(shape)
-        coeff2 = coeff2.view(shape)
-        log_var = log_var.view(shape)
-
-        # Compute mean
-        mean = coeff1 * x_t - coeff2 * noise_pred
-
+        sqrt_alphas_cumprod_t = sqrt_alphas_cumprod_t.view(shape)
+        sqrt_one_minus_alphas_cumprod_t = sqrt_one_minus_alphas_cumprod_t.view(shape)
+        
+        # Predict x_0 from x_t and noise
+        pred_x0 = (x_t - sqrt_one_minus_alphas_cumprod_t * noise_pred) / sqrt_alphas_cumprod_t
+        pred_x0 = torch.clamp(pred_x0, -1.0, 1.0)  # Optional: clip to valid range
+        
+        # Get posterior coefficients
+        coeff1 = cast(torch.Tensor, self.posterior_mean_coeff1)[t].view(shape)
+        coeff2 = cast(torch.Tensor, self.posterior_mean_coeff2)[t].view(shape)
+        
+        # Compute posterior mean: coeff1 * x_0 + coeff2 * x_t
+        mean = coeff1 * pred_x0 + coeff2 * x_t
+        
         # Sample from posterior if not at final step
+        log_var = cast(torch.Tensor, self.posterior_log_var_clipped)[t].view(shape)
         if t[0] > 0:
             variance = torch.exp(log_var)
             z = torch.randn_like(x_t)
             x_prev = mean + torch.sqrt(variance) * z
         else:
             x_prev = mean
-
+        
         return x_prev
 
     @torch.no_grad()
