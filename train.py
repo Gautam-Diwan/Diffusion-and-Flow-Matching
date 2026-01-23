@@ -211,39 +211,40 @@ def generate_samples(
     config: dict,
     ema: Optional[EMA] = None,
     current_step: Optional[int] = None,
-    # TODO: add/delete your arguments here
     **sampling_kwargs,
 ) -> torch.Tensor:
     """
     Generate samples using EMA parameters if available.
-
-    TODO: incoporate your own sampling scheme here
-
-    Args:
-        method: The diffusion method object (e.g., DDPM) with sample() and eval/train mode methods.
-        num_samples: Number of samples to generate.
-        image_shape: Shape of each image as (channels, height, width).
-        device: The torch device to generate samples on.
-        method_name: Name of the method being used (e.g., 'ddpm').
-        config: Configuration dictionary containing training and model settings.
-        ema: Optional EMA wrapper for the model. If provided and conditions are met,
-            EMA parameters will be used during sampling.
-        current_step: Current training step. Used to determine if EMA should be applied
-            based on ema_start config.
-        **sampling_kwargs: Additional keyword arguments passed to method.sample().
-
-    Returns:
-        torch.Tensor: Generated samples with shape (num_samples, *image_shape).
     """
     method.eval_mode()
+    
+    # Track if we successfully applied EMA
+    using_ema = False
+    
+    # Logic: Use EMA if it exists AND we are past the start threshold
+    if ema is not None:
+        ema_start = config['training'].get('ema_start', 0)
+        # If current_step is None, we assume this is a standalone eval (so use EMA)
+        # If current_step is set, we check if we've passed the warmup
+        if current_step is None or current_step >= ema_start:
+            print(f"Sampling with EMA weights...")
+            ema.apply_shadow()  # Swap model weights with EMA weights
+            using_ema = True
 
-    # During training, always use the regular model (not EMA)
-    # EMA parameters are unstable early in training and should only be used for final evaluation
-    samples = method.sample(batch_size=num_samples, image_shape=image_shape, **sampling_kwargs)
-
+    try:
+        # Run sampling (now using EMA weights if applied)
+        samples = method.sample(
+            batch_size=num_samples, 
+            image_shape=image_shape, 
+            **sampling_kwargs
+        )
+    finally:
+        # CRITICAL: Always restore original weights to continue training correctly
+        if using_ema:
+            ema.restore()  # Restore original training weights
+            
     method.train_mode()
     return samples
-
 
 def save_samples(
     samples: torch.Tensor,

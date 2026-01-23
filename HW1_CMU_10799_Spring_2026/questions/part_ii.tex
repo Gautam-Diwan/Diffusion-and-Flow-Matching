@@ -27,20 +27,76 @@ The starter code provides a detailed guideline on which files are provided and w
 \end{enumerate}
 \answerbox{}{
 % Your answer here
-\vspace{10cm} % comment this line out after you put in your answers
+\textit{Note: I had initially ran this for 20,000 steps however later I resumed it until 40,000 from the checkpoint. Everything stays constant} \\
+\textbf{1. Model Size:} 71,432,579 parameters
+
+\textbf{2. Batch Size:} 128
+
+\textbf{3. Total Training Iterations:} 20,000 and then 40,000
+
+\textbf{4. Training Loss Curve:} 
+Y\begin{figure}[H]
+    \centering
+    \begin{subfigure}{0.48\textwidth}
+        \centering
+        \includegraphics[width=\textwidth]{figures/loss_0_20k.png}
+        \caption{Loss curve: 0--20k steps}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}{0.48\textwidth}
+        \centering
+        \includegraphics[width=\textwidth]{figures/loss_20k_40k.png}
+        \caption{Loss curve: 20k--40k steps (continued with cosine scheduler)}
+    \end{subfigure}
+    \caption{Training loss curves showing rapid convergence followed by stabilization}
+\end{figure}
+
+The model demonstrates healthy convergence:
+\begin{itemize}
+    \item \textbf{Phase 1 (0--20k):} Loss decreases sharply from $\sim 0.14$ to $\sim 0.02$
+    \item \textbf{Phase 2 (20k--40k):} Loss stabilizes around $0.016$--$0.0175$ with minor fluctuations due to batch stochasticity and the cosine annealing schedule
+\end{itemize}
+
+The ``bumpiness'' in Phase 2 is expected and indicates the model is refining details rather than suffering from instability.
+
+\textbf{5. Compute Cost:} 1 hour and 59 min for 0-20000 run and roughly 2 hours for 20000-40000 run in detached mode
+
+\vspace{0.5em}
+
 }
 \includeanswer{q4a}
 
 \subq{b}{10} Generate a grid of 16 samples from your trained model. Include this grid below.
 \answerbox{}{
 % Your answer here
-\vspace{10cm} % comment this line out after you put in your answers
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.7\textwidth]{figures/samples_40000.png}
+    \caption{16 generated face samples from DDPM model at step 40,000}
+\end{figure}
 }
 \includeanswer{q4b}
 
 \subq{c}{10} Evaluate your model KID with 1k samples and report your KID score (both mean and std). You should be able to obtain KID < 0.005 with single L40S GPU training for a few hours.
 \answerbox{}{
-% Your answer here
+\begin{table}[H]
+    \centering
+    \begin{tabular}{lcc}
+        \toprule
+        \textbf{Checkpoint} & \textbf{KID Mean} & \textbf{KID Std} \\
+        \midrule
+        20k steps & 0.004061 & 0.000267 \\
+        40k steps (resumed from 20k) & 0.004676 & 0.000296 \\
+        \bottomrule
+    \end{tabular}
+    \caption{KID evaluation scores at different training iterations}
+\end{table}
+
+\noindent\textbf{Result:} \textbf{Both checkpoints achieved KID $< 0.005$}
+
+\vspace{0.3em}
+
+\noindent The 20k checkpoint achieved the best KID score of \textbf{0.004061 $\pm$ 0.000267}. The slight increase at 40k iterations (0.004676) is likely due to the cosine learning rate scheduler.
 }
 \includeanswer{q4c}
 
