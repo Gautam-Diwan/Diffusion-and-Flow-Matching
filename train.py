@@ -403,6 +403,9 @@ def train(
         print(f"Creating {method_name}...")
     if method_name == 'ddpm':
         method = DDPM.from_config(model, config, device)
+    elif method_name == 'ddpmx0':
+        from src.methods.ddpmx0 import DDPMx0
+        method = DDPMx0.from_config(model, config, device)
     else:
         raise ValueError(f"Unknown method: {method_name}. Only 'ddpm' is currently supported.")
 
