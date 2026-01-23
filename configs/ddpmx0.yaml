@@ -1,0 +1,62 @@
+# configs/ddpm_x0.yaml
+data:
+  dataset: "celeba"
+  root: "/data/celeba"
+  from_hub: true
+  repo_name: "electronickale/cmu-10799-celeba64-subset"
+  image_size: 64
+  channels: 3
+  num_workers: 4
+  pin_memory: true
+  augment: true
+
+model:
+  base_channels: 128
+  channel_mult: [1, 2, 2, 4]
+  num_res_blocks: 2
+  attention_resolutions: [8, 16]
+  num_heads: 4
+  dropout: 0.1
+  use_scale_shift_norm: true
+
+training:
+  batch_size: 128
+  learning_rate: 2e-4
+  weight_decay: 0.0
+  betas: [0.9, 0.999]
+  ema_decay: 0.999
+  ema_start: 5000
+  gradient_clip_norm: 1.0
+  num_iterations: 15000
+  warmup_iters: 5000
+  log_every: 100
+  sample_every: 1000
+  save_every: 5000
+  num_samples: 16
+
+ddpm:
+  num_timesteps: 1000
+  beta_start: 1e-4
+  beta_end: 2e-2
+
+sampling:
+  num_steps: 1000
+  sampler: "ddpm"
+
+infrastructure:
+  seed: 42
+  device: "cuda"
+  num_gpus: 1
+  mixed_precision: true
+  compile_model: false
+
+checkpoint:
+  dir: "./checkpoints"
+  resume: true
+
+logging:
+  dir: "./logs"
+  wandb:
+    enabled: true
+    project: "cmu-10799-diffusion"
+    entity: null
