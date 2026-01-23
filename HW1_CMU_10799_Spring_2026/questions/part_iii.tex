@@ -11,7 +11,37 @@ In each of the following scenario, you may be provided a loss curve, a grid of s
 
 \answerbox{}{
 % Your answer here
-\vspace{5cm} % comment this line out after you put in your answers
+\begin{enumerate}
+  \item \textbf{Parameterization mismatch (very common).} 
+    If the model was trained to predict one quantity but the sampler expects
+    another, sampling will produce garbage. For example, the model might be
+    trained to predict noise \(\eps\) (minimizing \(\|\eps-\epstheta\|^2\)),
+    but the sampling code could be using the formula that assumes the model
+    predicts \(x_0\) (or vice versa). The reverse-step algebra is different
+    for each parametrization, so a mismatch yields noisy images despite a
+    low training loss.
+
+  \item \textbf{Incorrect reverse-process / sampler implementation.}
+    Common bugs include:
+    \begin{itemize}
+      \item iterating timesteps in the wrong order (0\(\to\)T instead of T\(\to\)0);
+      \item wrong indexing into precomputed buffers (off-by-one or wrong dtype);
+      \item incorrect broadcasting/shape handling when applying coefficients;
+      \item missing or wrong variance term (adding noise when not intended or
+      failing to add when required).
+    \end{itemize}
+    Any of these will prevent signal recovery even if the network learned the
+    denoising objective well.
+
+  \item \textbf{Using training-mode weights / forgetting EMA / dropout effects.}
+    If sampling is done while the model is still in train mode (dropout active)
+    or without applying EMA weights, outputs can be noisy and inconsistent.
+
+  \item \textbf{Other practical issues:} wrong timestep embedding (t off by
+    scale or dtype), device/dtype mismatch, bugs in loss averaging, or very
+    wrong beta schedule (betas too large/small). These can all result in a low
+    training loss (because the network can cheat locally) yet failing sampling.
+\end{enumerate}
 }
 \includeanswer{q5a}
 
@@ -19,7 +49,45 @@ In each of the following scenario, you may be provided a loss curve, a grid of s
 
 \answerbox{}{
 % Your answer here
-\vspace{5cm} % comment this line out after you put in your answers
+No, not necessarily a bug. A non-zero plateau and small ``bumpiness'' in the
+training loss are expected in diffusion training for several reasons:
+
+\begin{enumerate}
+  \item \textbf{Irreducible / stochastic target.} The model is predicting
+    random Gaussian noise (or another stochastic quantity). Because the target
+    contains inherent randomness i.e. non-determinism combined with possible minima at ELBO only, the loss will not go to zero but it will
+    approach the irreducible variance associated with that prediction task.
+
+  \item \textbf{Heterogeneous difficulty across timesteps.} The training
+    objective samples timesteps \(t\) uniformly (or non-uniformly). Denoising
+    at different \(t\) has very different difficulty (early timesteps are
+    easier than late timesteps), so per-batch loss varies a lot depending on
+    which \(t\) appear in the batch, causing the curve to look noisy. That is why we default to \(t\)=1000 only from the original DDPM paper.
+
+  \item \textbf{Stochastic optimization noise.} Finite, small batch size, learning
+    rate steps, gradient clipping, mixed precision, and data shuffling produce
+    fluctuation in the observed loss (SGD noise). These are normal and expected.
+
+  \item \textbf{Other causes of non-monotonicity.} Learning-rate changes through different types of schedulers,
+    periodic evaluation/sampling overhead, and distributed syncs can create
+    visible small jumps or wiggles in the logged loss.
+\end{enumerate}
+
+Longer training helps as small reductions in the MSE can
+translate to perceptually better samples and lower FID/KID. However there
+are diminishing returns; instead of only watching loss, monitor sample quality
+metrics (FID/KID) and visual samples. Practical suggestions:
+
+\begin{itemize}
+  \item Smooth the curve for reporting (e.g., exponential moving average or a
+    100-step moving average) to see the trend more clearly.
+  \item Plot \emph{per-timestep} loss (loss vs.\ \(t\)) : this often reveals
+    which \(t\) are still hard and whether training is progressing there.
+  \item If variance is too large, increase batch size, reduce LR, or use gradient
+    accumulation; ensure EMA is enabled.
+  \item Use qualitative checks (sample grids) and KID/FID to decide whether
+    continuing training is giving meaningful improvement.
+\end{itemize}
 }
 \includeanswer{q5b}
 
@@ -32,6 +100,34 @@ In each of the following scenario, you may be provided a loss curve, a grid of s
 
 \answerbox{}{
 % Your answer here
-\vspace{2cm} % comment this line out after you put in your answers
+\textbf{Bug:} Improper un-normalization (data post-processing) when saving samples.
+
+\medskip
+
+\noindent\textbf{Why:} The model and training pipeline commonly work in the
+range \([-1,1]\). If you save or visualize tensors in that range directly
+without converting to \([0,1]\) (float) or \([0,255]\) (uint8), negative values
+get clipped or misinterpreted, color channels can saturate, and images look
+``solarized'' or heavily contrasty (appearing like noise or colorized garbage).
+
+\medskip
+
+\noindent\textbf{Fix:} Un-normalize and clamp before saving. 
+
+\medskip
+
+\noindent\textbf{Extra checks:}
+\begin{itemize}
+  \item Confirm the training \texttt{transforms} (train-time normalization)
+    and the sampling save/un-normalization use the same convention.
+  \item Ensure channel ordering expected by the saver is correct (PIL expects
+    H$\times$W$\times$C in RGB order).
+  \item Use \texttt{model.eval()} and apply EMA weights before generating the
+    images used for final logging/saving.
+\end{itemize}
+
+\noindent Fixing the un-normalization almost always resolves the ``too-dark /
+solarized / color-warped'' grids in Figure 2.
 }
+
 \includeanswer{q5c}
