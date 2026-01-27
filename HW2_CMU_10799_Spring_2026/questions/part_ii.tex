@@ -1,0 +1,35 @@
+
+\hwpart{III}{Help Your ``Classmate'' Debug (15 points)}
+Kale is back! She's trying Flow Matching now but running into new issues, yet again.
+In each of the following scenario, you may be provided a loss curve, a grid of samples or a description of the situation. Try your best to help Kale with her implementation!
+
+\question{Pseudo Debugging Scenarios}{15}
+
+\subq{a}{5} Kale trained both DDPM (from HW1) and flow matching on the same dataset with the same model architecture. She notices that her converged Flow Matching loss is significantly higher than her converged DDPM loss. Worried that something is wrong, she asks you: is this expected? Should she be concerned?
+
+\answerbox{}{
+% Your answer here
+\vspace{6.5cm} % comment this line out after you put in your answers
+}
+\includeanswer{q5a}
+
+\subq{b}{5} Kale's training loss starts reasonable but occasionally spikes to very large values or NaN, especially early in training. Her DDPM implementation worked fine with the same hyperparameters and learning rate. What might be the cause and how to fix it? Identify the issue and provide two potential strategies to fix the bug.
+
+\answerbox{}{
+% Your answer here
+\vspace{6cm} % comment this line out after you put in your answers
+}
+\includeanswer{q5b}
+
+\subq{c}{5} After the model fully converged, Kale tried to sample from her model and obtained the images below. She's using 200 Euler steps and her training loss looks normal. What are the debugging steps that you would recommend her to take?
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.5\textwidth]{figures/content.png}
+    \caption{The samples that Kale obtained.}
+\end{figure}
+
+\answerbox{}{
+% Your answer here
+\vspace{5cm} % comment this line out after you put in your answers
+}
+\includeanswer{q5c}

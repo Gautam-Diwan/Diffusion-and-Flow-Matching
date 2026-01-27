@@ -1,0 +1,309 @@
+% CMU 10-799: Diffusion & Flow Matching - Homework 1
+% ===================================================
+\documentclass[11pt]{article}
+% ============================================================================
+\newif\ifshowanswers
+\showanswersfalse
+% \showanswerstrue  % UNCOMMENT FOR INSTRUCTOR VERSION
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage[margin=1in]{geometry}
+\setlength{\headheight}{14pt}
+\usepackage{amsmath, amssymb, amsthm}
+\usepackage{mathtools}
+\usepackage{bm}
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage{subcaption}
+\usepackage[dvipsnames]{xcolor}
+\usepackage{tcolorbox}
+\tcbuselibrary{listings, skins, breakable}
+\usepackage{listings}
+\usepackage[colorlinks=true, linkcolor=NavyBlue, urlcolor=NavyBlue, citecolor=NavyBlue]{hyperref}
+\usepackage{natbib}
+\usepackage{fancyhdr}
+\usepackage{enumitem}
+\usepackage{ifthen}
+\usepackage{import}
+\usepackage{booktabs}
+\usepackage{comment}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+
+\definecolor{cmured}{RGB}{196, 18, 48}
+\definecolor{cmugray}{RGB}{109, 110, 113}
+\definecolor{cmulight}{RGB}{240, 240, 240}
+\definecolor{answergreen}{RGB}{34, 139, 34}
+\definecolor{answerbox}{RGB}{232, 245, 233}
+\definecolor{codebg}{RGB}{248, 248, 248}
+\definecolor{codeframe}{RGB}{200, 200, 200}
+
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\textcolor{cmugray}{\small CMU 10-799: Diffusion \& Flow Matching}}
+\fancyhead[R]{\textcolor{cmugray}{\small Spring 2026}}
+\fancyfoot[C]{\textcolor{cmugray}{\thepage}}
+\renewcommand{\headrulewidth}{0.4pt}
+\renewcommand{\footrulewidth}{0pt}
+
+% --- Title Command ---
+\newcommand{\hwtitle}[2]{
+    \begin{center}
+        {\Large\bfseries\textcolor{cmured}{Homework #1: #2}}\\[0.5em]
+        {\large CMU 10-799: Diffusion \& Flow Matching}\\[0.3em]
+        {\normalsize Spring 2026}\\[0.5em]
+        \ifshowanswers
+            {\large\textcolor{answergreen}{\textbf{--- SOLUTIONS ---}}}\\[0.5em]
+        \fi
+        \rule{0.6\textwidth}{0.5pt}
+    \end{center}
+    \vspace{1em}
+}
+
+% --- Due Date and Info Box ---
+\newcommand{\hwinfo}[3]{
+    \begin{tcolorbox}[
+        colback=cmulight,
+        colframe=cmugray,
+        boxrule=0.5pt,
+        arc=2pt,
+        left=10pt,
+        right=10pt,
+        top=8pt,
+        bottom=8pt
+    ]
+        \textbf{Due:} #1 \hfill \textbf{Total Points:} #2\\[0.3em]
+        #3
+    \end{tcolorbox}
+    \vspace{1em}
+}
+
+% --- Section Headers ---
+\newcommand{\hwpart}[2]{
+    \vspace{1.5em}
+    \noindent{\Large\bfseries\textcolor{cmured}{Part #1: #2}}
+    \vspace{0.5em}
+    \hrule
+    \vspace{1em}
+}
+
+% --- Question Command ---
+\newcounter{questioncounter}
+\setcounter{questioncounter}{0}
+\newcommand{\question}[2]{
+    \stepcounter{questioncounter}
+    \vspace{1em}
+    \noindent\textbf{\textcolor{cmured}{Q\thequestioncounter.} #1} \hfill \textbf{[#2 pts]}
+    \vspace{0.5em}
+}
+
+% --- Subquestion ---
+\newcommand{\subq}[2]{
+    \vspace{0.5em}
+    \noindent\textbf{(#1)} [#2 pts]
+}
+
+% --- Answer Environment ---
+\ifshowanswers
+    \newtcolorbox{answer}{
+        colback=answerbox,
+        colframe=answergreen,
+        boxrule=1pt,
+        arc=3pt,
+        left=10pt,
+        right=10pt,
+        top=8pt,
+        bottom=8pt,
+        title={\textbf{Solution}},
+        fonttitle=\bfseries\color{white},
+        coltitle=white,
+        colbacktitle=answergreen,
+        breakable
+    }
+
+    % --- Include Answer File (only if showanswers is defined) ---
+    \newcommand{\includeanswer}[1]{
+        \IfFileExists{answers/#1.tex}{
+            \begin{answer}
+            \input{answers/#1.tex}
+            \end{answer}
+        }{
+            \IfFileExists{answers/#1}{
+                \begin{answer}
+                \input{answers/#1}
+                \end{answer}
+            }{}
+        }
+    }
+
+    % --- Answer Box (hidden in instructor version) ---
+    \newcommand{\answerbox}[2]{}
+\else
+    \newenvironment{answer}{}{}
+
+    % --- Include Answer File (student version skips) ---
+    \newcommand{\includeanswer}[1]{}
+
+    % --- Answer Box (for students to write in) ---
+    \newcommand{\answerbox}[2]{
+        \vspace{0.5em}
+        \if\relax\detokenize{#2}\relax
+            \begin{tcolorbox}[
+                colback=white,
+                colframe=cmugray,
+                boxrule=0.5pt,
+                arc=2pt,
+                height=#1,
+                valign=top,
+                breakable,
+                before upper=\noindent\ignorespaces
+            ]
+                \textcolor{cmugray}{\textit{Your answer here...}}
+            \end{tcolorbox}
+        \else
+            \begin{tcolorbox}[
+                colback=white,
+                colframe=cmugray,
+                boxrule=0.5pt,
+                arc=2pt,
+                valign=top,
+                breakable,
+                before upper=\noindent\ignorespaces
+            ]
+                #2
+            \end{tcolorbox}
+        \fi
+    }
+\fi
+
+
+% --- Image Insertion ---
+\newcommand{\hwimage}[3]{
+    \begin{figure}[H]
+        \centering
+        \includegraphics[width=#2\textwidth]{figures/#1}
+        \caption{#3}
+    \end{figure}
+}
+
+% --- Side-by-side Images ---
+\newcommand{\hwimagepair}[5]{
+    \begin{figure}[H]
+        \centering
+        \begin{subfigure}{0.48\textwidth}
+            \centering
+            \includegraphics[width=\textwidth]{figures/#1}
+            \caption{#3}
+        \end{subfigure}
+        \hfill
+        \begin{subfigure}{0.48\textwidth}
+            \centering
+            \includegraphics[width=\textwidth]{figures/#2}
+            \caption{#4}
+        \end{subfigure}
+        \caption{#5}
+    \end{figure}
+}
+
+% --- Code Environment ---
+\lstdefinestyle{hwcodestyle}{
+    backgroundcolor=\color{codebg},
+    frame=single,
+    rulecolor=\color{codeframe},
+    basicstyle=\ttfamily\small,
+    keywordstyle=\color{blue}\bfseries,
+    commentstyle=\color{gray}\itshape,
+    stringstyle=\color{orange},
+    numbers=left,
+    numberstyle=\tiny\color{cmugray},
+    numbersep=8pt,
+    breaklines=true,
+    breakatwhitespace=true,
+    tabsize=4,
+    showstringspaces=false,
+    xleftmargin=15pt,
+    xrightmargin=5pt,
+    aboveskip=10pt,
+    belowskip=10pt
+}
+
+\lstnewenvironment{hwcode}[1]{
+    \lstset{style=hwcodestyle, language=#1}
+}{}
+
+% --- Inline Code ---
+\newcommand{\code}[1]{\texttt{\colorbox{codebg}{#1}}}
+
+% --- Math Shortcuts ---
+\newcommand{\E}{\mathbb{E}}
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\N}{\mathcal{N}}
+\newcommand{\xzero}{x_0}
+\newcommand{\xt}{x_t}
+\newcommand{\eps}{\epsilon}
+\newcommand{\epstheta}{\epsilon_\theta}
+\newcommand{\alphabar}{\bar{\alpha}}
+
+% --- Hints ---
+\newcommand{\hint}[1]{
+    \vspace{0.3em}
+    \noindent\textcolor{cmugray}{\textit{Hint: #1}}
+}
+
+% --- Important Notes ---
+\newtcolorbox{importantbox}{
+    colback=yellow!10,
+    colframe=orange!80!black,
+    boxrule=0.5pt,
+    arc=2pt,
+    left=10pt,
+    right=10pt,
+    top=5pt,
+    bottom=5pt,
+    title={\textbf{Important}},
+    fonttitle=\bfseries,
+    coltitle=black,
+    colbacktitle=orange!30
+}
+
+
+\begin{document}
+
+% --- Title ---
+\hwtitle{2}{Flow Matching \& DDIM Implementation}
+
+% --- Info Box ---
+\hwinfo{Tuesday, February 3, 2026 at 11:59 PM ET}{100}{
+    \textbf{Late Due Date:} Thursday, February 5, 2026 at 11:59 PM ET \\
+    \textbf{Submission:} Gradescope \url{https://www.gradescope.com/courses/1207241} \\
+    \textbf{Starter Code:} \url{https://github.com/KellyYutongHe/cmu-10799-diffusion/}
+}
+
+\input{logistics/intro}
+\input{logistics/starter_code}
+\input{questions/part_i}
+\input{questions/part_ii}
+\input{questions/part_iii}
+\input{questions/part_iv}
+\input{questions/part_v}
+\input{questions/part_vi}
+
+
+\vspace{2em}
+\hrule
+\vspace{1em}
+\textit{\textcolor{cmured}{That's it! You have completed HW 1! Congrats on your freshly baked diffusion models!}}
+
+
+\vspace{2em}
+\noindent{\Large\bfseries\textcolor{cmured}{References}}
+\vspace{0.4em}
+\hrule
+\vspace{0.6em}
+\renewcommand{\bibsection}{}
+\bibliographystyle{plainnat}
+\bibliography{references}
+
+\end{document}
