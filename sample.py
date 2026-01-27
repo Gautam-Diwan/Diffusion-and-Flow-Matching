@@ -18,6 +18,7 @@ from tqdm import tqdm
 from src.models import create_model_from_config
 from src.data import save_image
 from src.methods import DDPM
+from src.methods.flow_matching import FlowMatching
 from src.utils import EMA
 
 
@@ -75,7 +76,7 @@ def main():
     parser.add_argument('--checkpoint', type=str, required=True,
                        help='Path to model checkpoint')
     parser.add_argument('--method', type=str, required=True,
-                       choices=['ddpm'], # You can add more later
+                       choices=['ddpm', 'flow_matching'], # You can add more later
                        help='Method used for training (currently only ddpm is supported)')
     parser.add_argument('--num_samples', type=int, default=64,
                        help='Number of samples to generate')
@@ -119,6 +120,8 @@ def main():
     # Create method
     if args.method == 'ddpm':
         method = DDPM.from_config(model, config, device)
+    elif args.method == 'flow_matching':
+        method = FlowMatching.from_config(model, config, device)
     else:
         raise ValueError(f"Unknown method: {args.method}. Only 'ddpm' is currently supported.")
     

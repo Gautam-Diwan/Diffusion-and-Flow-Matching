@@ -1,0 +1,50 @@
+
+\hwpart{0}{Setup your codebase (0 point)}
+You'll continue using the same codebase from HW1. Your DDPM implementation should still work and you'll need it for this homework.
+\noindent\textbf{\textcolor{cmured}{What You'll Implement:}}
+\vspace{0.6em}
+
+\begin{tcolorbox}[
+    colback=cmulight,
+    colframe=cmugray,
+    boxrule=0.5pt,
+    arc=2pt,
+    left=8pt,
+    right=8pt,
+    top=6pt,
+    bottom=6pt
+]
+    \centering
+    \renewcommand{\arraystretch}{1.2}
+    \begin{tabular}{ll}
+    \toprule
+    \textbf{File} & \textbf{What to implement} \\
+    \midrule
+    \texttt{src/methods/flow\_matching.py} & Create your own flow matching implementation \\
+    \texttt{src/methods/ddpm.py} & Add DDIM sampling \\
+    \texttt{configs/} & Add configs for flow matching \& DDIM \\
+    \texttt{scripts/} & Add scripts for flow matching \& DDIM \\
+    \texttt{train.py} & Add flow matching training options \\
+    \texttt{sample.py} & Add flow matching \& DDIM sampling options \\
+    \bottomrule
+    \end{tabular}
+\end{tcolorbox}
+
+\vspace{2em}
+\noindent\textbf{\textcolor{cmured}{Hint for Flow Matching:}}
+\vspace{0.6em}
+
+\noindent Your \texttt{\textcolor{cmured}{flow\_matching.py}} should follow the same structure as your \texttt{\textcolor{cmured}{ddpm.py}}:
+\begin{itemize}[leftmargin=*]
+    \item A \texttt{\textcolor{cmured}{FlowMatching}} class that inherits from \texttt{\textcolor{cmured}{BaseMethod}}
+    \item \texttt{\textcolor{cmured}{compute\_loss(x\_0, ...)}} — returns training loss given a batch of real images
+    \item \texttt{\textcolor{cmured}{sample(batch\_size, image\_shape, ...)}} — generates new images starting from noise
+\end{itemize}
+
+\noindent The core algorithm is different (and simpler!) but the interface should feel familiar.
+
+\vspace{1em}
+\noindent\textbf{\textcolor{cmured}{Compute Budget:}}
+\vspace{0.6em}
+
+You have \textbf{\$500 in \href{https://modal.com/}{Modal} credits} for the entire course (all 4 homework). Budget wisely!
