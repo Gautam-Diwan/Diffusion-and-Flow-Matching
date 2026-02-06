@@ -94,6 +94,9 @@ def main():
     # Sampling arguments
     parser.add_argument('--num_steps', type=int, default=None,
                        help='Number of sampling steps (default: from config)')
+    parser.add_argument('--sampler', type=str, default='ddpm',
+                   choices=['ddpm', 'ddim'],
+                   help='Sampling method: ddpm or ddim (default: ddpm)')
     
     # Other options
     parser.add_argument('--no_ema', action='store_true',
@@ -155,12 +158,14 @@ def main():
             batch_size = min(args.batch_size, remaining)
 
             num_steps = args.num_steps or config['sampling']['num_steps']
+            sampler = args.sampler or config['sampling'].get('sampler', 'ddpm')
 
             samples = method.sample(
                 batch_size=batch_size,
                 image_shape=image_shape,
                 num_steps=num_steps,
                 # TODO: add your arugments here
+                sampler=sampler
             )
 
             # Save individual images immediately or collect for grid

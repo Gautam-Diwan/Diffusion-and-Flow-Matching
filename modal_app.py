@@ -413,6 +413,7 @@ def sample(
     checkpoint: str = "checkpoints/ddpm/ddpm_final.pt",
     num_samples: int = None,
     num_steps: int = None,
+    sampler: str = 'ddpm',
 ):
     """
     Generate samples from a trained model.
@@ -438,6 +439,8 @@ def sample(
         checkpoint_path,
         "--method",
         method,
+        "--sampler",
+        sampler,
         "--grid",
         "--output",
         output_path,
@@ -511,6 +514,7 @@ def evaluate_torch_fidelity(
     num_samples: int = 5000,
     batch_size: int = 128,
     num_steps: int = None,
+    sampler: str = 'ddpm',
     override: bool = False,
 ):
     """
@@ -622,6 +626,8 @@ def evaluate_torch_fidelity(
             str(num_samples),
             "--batch_size",
             str(batch_size),
+            "--sampler",
+            sampler,
         ]
 
         if num_steps:
@@ -695,6 +701,7 @@ def main(
     num_samples: int = None,
     num_steps: int = None,
     metrics: str = None,
+    sampler: str = 'ddpm',
     overfit_single_batch: bool = False,
     override: bool = False,
 ):
@@ -757,6 +764,7 @@ def main(
             "method": method,
             "checkpoint": checkpoint,
             "override": override,
+            "sampler": sampler,
         }
         if metrics is not None:
             eval_kwargs["metrics"] = metrics
