@@ -206,29 +206,85 @@ class DDPM(BaseMethod):
             x_prev = mean
         
         return x_prev
+    
+    @torch.no_grad()
+    def reverse_process_ddim(
+        self,
+        x_t: torch.Tensor,
+        t: torch.Tensor,
+        t_prev: torch.Tensor,
+    ) -> torch.Tensor:
+        """
+        One DDIM reverse step: x_t -> x_{t_prev}
+        
+        DDIM update rule:
+        x_{t-1} = sqrt(α̅_{t-1}) * x̂_0 + sqrt(1-α̅_{t-1}) * ε
+        
+        where x̂_0 = (x_t - sqrt(1-α̅_t) * ε) / sqrt(α̅_t)
+        
+        Args:
+            x_t: Noisy samples at time t
+            t: Current timestep indices
+            t_prev: Previous timestep indices
+            
+        Returns:
+            x_prev: Samples at time t_prev
+        """
+        # Predict noise
+        noise_pred = self.model(x_t, t)
+        
+        # Get alpha values
+        alphas_cumprod = cast(torch.Tensor, self.alphas_cumprod)
+        alpha_t = alphas_cumprod[t]
+        alpha_t_prev = alphas_cumprod[t_prev]
+        
+        # Reshape for broadcasting: (batch_size,) -> (batch_size, 1, 1, 1)
+        shape = [-1] + [1] * (len(x_t.shape) - 1)
+        alpha_t = alpha_t.view(shape)
+        alpha_t_prev = alpha_t_prev.view(shape)
+        
+        # Predict x_0
+        sqrt_alpha_t = torch.sqrt(alpha_t)
+        sqrt_one_minus_alpha_t = torch.sqrt(1.0 - alpha_t)
+        pred_x0 = (x_t - sqrt_one_minus_alpha_t * noise_pred) / sqrt_alpha_t
+        
+        # Clip predicted x_0 to valid range (optional but recommended)
+        pred_x0 = torch.clamp(pred_x0, -1.0, 1.0)
+        
+        # DDIM update rule
+        sqrt_alpha_t_prev = torch.sqrt(alpha_t_prev)
+        sqrt_one_minus_alpha_t_prev = torch.sqrt(1.0 - alpha_t_prev)
+        
+        x_prev = sqrt_alpha_t_prev * pred_x0 + sqrt_one_minus_alpha_t_prev * noise_pred
+        
+        return x_prev
 
     @torch.no_grad()
     def sample(
         self,
         batch_size: int,
         image_shape: Tuple[int, int, int],
+        num_steps: int | None = None,
+        sampler: str = "ddpm",
         **kwargs: Any
     ) -> torch.Tensor:
         """
-        Generate samples using reverse diffusion.
-
+        Generate samples using either DDPM or DDIM sampling.
+        
         Args:
             batch_size: Number of samples
             image_shape: Shape (channels, height, width)
+            num_steps: Number of sampling steps (for DDIM, can be less than num_timesteps)
+            sampler: "ddpm" or "ddim"
             **kwargs: Additional arguments
-
+            
         Returns:
             samples: Generated samples
         """
         self.eval_mode()
-
+        
         channels, height, width = image_shape
-
+        
         # Start with pure noise
         x_t = torch.randn(
             batch_size,
@@ -237,17 +293,57 @@ class DDPM(BaseMethod):
             width,
             device=self.device
         )
-
-        # Reverse diffusion loop
-        for t_step in range(self.num_timesteps - 1, -1, -1):
-            t_batch = torch.full(
-                (batch_size,),
-                t_step,
-                device=self.device,
-                dtype=torch.long
-            )
-            x_t = self.reverse_process(x_t, t_batch)
-
+        
+        if sampler == "ddpm":
+            # Original DDPM sampling (use all timesteps)
+            for t_step in range(self.num_timesteps - 1, -1, -1):
+                t_batch = torch.full(
+                    (batch_size,),
+                    t_step,
+                    device=self.device,
+                    dtype=torch.long
+                )
+                x_t = self.reverse_process(x_t, t_batch)
+                
+        elif sampler == "ddim":
+            # DDIM sampling (can use fewer steps)
+            if num_steps is None:
+                num_steps = self.num_timesteps
+                
+            # Create timestep subsequence
+            # e.g., if num_timesteps=1000 and num_steps=100, use [1000, 990, 980, ..., 10, 0]
+            if num_steps >= self.num_timesteps:
+                timesteps = list(range(self.num_timesteps - 1, -1, -1))
+            else:
+                # Subsample timesteps uniformly
+                step_size = self.num_timesteps // num_steps
+                timesteps = list(range(self.num_timesteps - 1, -1, -step_size))
+                # Ensure we end at 0
+                if timesteps[-1] != 0:
+                    timesteps.append(0)
+            
+            # DDIM reverse diffusion loop
+            for i in range(len(timesteps) - 1):
+                t = timesteps[i]
+                t_prev = timesteps[i + 1]
+                
+                t_batch = torch.full(
+                    (batch_size,),
+                    t,
+                    device=self.device,
+                    dtype=torch.long
+                )
+                t_prev_batch = torch.full(
+                    (batch_size,),
+                    t_prev,
+                    device=self.device,
+                    dtype=torch.long
+                )
+                
+                x_t = self.reverse_process_ddim(x_t, t_batch, t_prev_batch)
+        else:
+            raise ValueError(f"Unknown sampler: {sampler}. Choose 'ddpm' or 'ddim'")
+        
         return x_t
 
     def to(self, *args: Any, **kwargs: Any) -> "DDPM":

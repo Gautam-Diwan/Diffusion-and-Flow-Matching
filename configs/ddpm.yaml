@@ -43,7 +43,8 @@ ddpm:
   beta_end: 2e-2 # float
 
 sampling:
-  num_steps: 1000 # int
+  num_steps: 100 # int
+  # num_steps: 1000 # int
   sampler: "ddpm" # for the first hw we only need ddpm sampling, this is a placeholder where you can add more options yourself later
 
 infrastructure:
