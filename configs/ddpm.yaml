@@ -43,9 +43,15 @@ ddpm:
   beta_end: 2e-2 # float
 
 sampling:
-  num_steps: 100 # int
-  # num_steps: 1000 # int
-  sampler: "ddpm" # for the first hw we only need ddpm sampling, this is a placeholder where you can add more options yourself later
+  num_steps: 5  # DPM-Solver can use much fewer steps than DDPM/DDIM
+  # num_steps: 1000
+  sampler: "dpm_solver"  # Options: "ddpm", "ddim", "dpm_solver"
+  
+  # DPM-Solver specific settings
+  dpm_solver:
+    order: 2  # Options: 1, 2, 3 (higher = more accurate but slightly slower)
+    method: "multistep"  # Options: "singlestep", "multistep" (multistep is recommended)
+    skip_type: "logSNR"  # Options: "time_uniform", "logSNR" (logSNR is better for high orders)
 
 infrastructure:
   seed: 42

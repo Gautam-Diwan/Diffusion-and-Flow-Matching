@@ -622,6 +622,18 @@ def train(
         if (step + 1) % sample_every == 0:
             if is_main_process:
                 print(f"\nGenerating samples at step {step + 1}...")
+                
+                # Build sampling kwargs
+                sampling_kwargs = {}
+                sampling_config = config.get('sampling', {})
+                sampler = sampling_config.get('sampler', 'ddpm')
+                
+                if sampler == 'dpm_solver':
+                    dpm_config = sampling_config.get('dpm_solver', {})
+                    sampling_kwargs['order'] = dpm_config.get('order', 2)
+                    sampling_kwargs['method'] = dpm_config.get('method', 'multistep')
+                    sampling_kwargs['skip_type'] = dpm_config.get('skip_type', 'time_uniform')
+                
                 samples = generate_samples(
                     method,
                     num_samples,
@@ -631,6 +643,7 @@ def train(
                     config,
                     ema,
                     current_step=step + 1,
+                    **sampling_kwargs
                 )
                 sample_path = os.path.join(log_dir, 'samples', f'samples_{step + 1:07d}.png')
                 save_samples(samples, sample_path, num_samples)

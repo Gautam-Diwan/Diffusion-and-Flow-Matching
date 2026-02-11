@@ -11,7 +11,8 @@ import torch.nn.functional as F
 
 from .base import BaseMethod
 
-
+# Add these imports at the top
+import numpy as np
 class DDPM(BaseMethod):
     """Denoising Diffusion Probabilistic Models."""
 
@@ -258,6 +259,367 @@ class DDPM(BaseMethod):
         x_prev = sqrt_alpha_t_prev * pred_x0 + sqrt_one_minus_alpha_t_prev * noise_pred
         
         return x_prev
+    
+
+    def get_time_steps(self, num_steps: int, skip_type: str = "time_uniform") -> torch.Tensor:
+        """
+        Generate timestep schedule for sampling.
+        
+        Args:
+            num_steps: Number of sampling steps
+            skip_type: "time_uniform" or "logSNR"
+            
+        Returns:
+            Timestep schedule of shape (num_steps + 1,)
+        """
+        if skip_type == "time_uniform":
+            # Uniform in timestep space
+            timesteps = torch.linspace(self.num_timesteps - 1, 0, num_steps + 1)
+        elif skip_type == "logSNR":
+            # Uniform in log-SNR space (better for high-order solvers)
+            alphas_cumprod = cast(torch.Tensor, self.alphas_cumprod)
+            lambda_T = -torch.log(alphas_cumprod[-1] / (1 - alphas_cumprod[-1])) / 2
+            lambda_0 = -torch.log(alphas_cumprod[0] / (1 - alphas_cumprod[0])) / 2
+            
+            logSNR = torch.linspace(lambda_T.item(), lambda_0.item(), num_steps + 1)
+            
+            # Convert log-SNR back to timesteps
+            timesteps = []
+            for ls in logSNR:
+                # Find timestep t such that lambda_t ≈ ls
+                # lambda_t = -log(alpha_t / (1 - alpha_t)) / 2
+                # Solve for t
+                alpha_t = torch.exp(-2 * ls) / (1 + torch.exp(-2 * ls))
+                
+                # Find closest timestep
+                diff = torch.abs(alphas_cumprod - alpha_t)
+                t = torch.argmin(diff)
+                timesteps.append(t)
+            
+            timesteps = torch.tensor(timesteps, dtype=torch.float32)
+        else:
+            raise ValueError(f"Unknown skip_type: {skip_type}")
+        
+        return timesteps.to(self.device)
+
+    @torch.no_grad()
+    def dpm_solver_first_order_update(
+        self,
+        x_t: torch.Tensor,
+        t: torch.Tensor,
+        t_prev: torch.Tensor,
+        model_output: torch.Tensor = None,
+    ) -> torch.Tensor:
+        """
+        First-order DPM-Solver update (equivalent to DDIM).
+        
+        Args:
+            x_t: Current samples
+            t: Current timestep
+            t_prev: Previous timestep
+            model_output: Precomputed model output (optional)
+            
+        Returns:
+            x_{t_prev}: Updated samples
+        """
+        if model_output is None:
+            model_output = self.model(x_t, t)
+        
+        # Get alpha values
+        alphas_cumprod = cast(torch.Tensor, self.alphas_cumprod)
+        alpha_t = alphas_cumprod[t].view(-1, 1, 1, 1)
+        alpha_prev = alphas_cumprod[t_prev].view(-1, 1, 1, 1)
+        
+        # Compute lambda (log-SNR)
+        lambda_t = torch.log(alpha_t) - torch.log(1 - alpha_t)
+        lambda_prev = torch.log(alpha_prev) - torch.log(1 - alpha_prev)
+        h = lambda_prev - lambda_t
+        
+        # Predict x_0
+        sqrt_alpha_t = torch.sqrt(alpha_t)
+        sqrt_one_minus_alpha_t = torch.sqrt(1 - alpha_t)
+        x_0_pred = (x_t - sqrt_one_minus_alpha_t * model_output) / sqrt_alpha_t
+        
+        # First-order exponential integrator
+        sqrt_alpha_prev = torch.sqrt(alpha_prev)
+        sqrt_one_minus_alpha_prev = torch.sqrt(1 - alpha_prev)
+        
+        x_prev = sqrt_alpha_prev * x_0_pred + sqrt_one_minus_alpha_prev * (
+            model_output + (torch.exp(h) - 1) * model_output
+        )
+        
+        return x_prev
+
+    @torch.no_grad()
+    def dpm_solver_second_order_update(
+        self,
+        x_t: torch.Tensor,
+        t_list: list,
+        model_output_list: list,
+    ) -> torch.Tensor:
+        """
+        Second-order multistep DPM-Solver update (2M).
+        
+        Uses model outputs from two previous steps for higher accuracy.
+        
+        Args:
+            x_t: Current samples
+            t_list: List of [t_{i-1}, t_i, t_{i+1}] (3 timesteps)
+            model_output_list: List of model outputs at [t_{i-1}, t_i]
+            
+        Returns:
+            x_{t_{i+1}}: Updated samples
+        """
+        assert len(t_list) == 3 and len(model_output_list) == 2
+        
+        t_prev_prev, t_prev, t = t_list[-3], t_list[-2], t_list[-1]
+        model_prev_prev, model_prev = model_output_list[-2], model_output_list[-1]
+        
+        # Get alpha values
+        alphas_cumprod = cast(torch.Tensor, self.alphas_cumprod)
+        alpha_prev_prev = alphas_cumprod[t_prev_prev].view(-1, 1, 1, 1)
+        alpha_prev = alphas_cumprod[t_prev].view(-1, 1, 1, 1)
+        alpha_t = alphas_cumprod[t].view(-1, 1, 1, 1)
+        
+        # Compute lambda values
+        lambda_prev_prev = torch.log(alpha_prev_prev) - torch.log(1 - alpha_prev_prev)
+        lambda_prev = torch.log(alpha_prev) - torch.log(1 - alpha_prev)
+        lambda_t = torch.log(alpha_t) - torch.log(1 - alpha_t)
+        
+        h = lambda_t - lambda_prev
+        h_prev = lambda_prev - lambda_prev_prev
+        r = h_prev / h
+        
+        # Predict x_0 from previous step
+        sqrt_alpha_prev = torch.sqrt(alpha_prev)
+        sqrt_one_minus_alpha_prev = torch.sqrt(1 - alpha_prev)
+        x_0_pred = (x_t - sqrt_one_minus_alpha_prev * model_prev) / sqrt_alpha_prev
+        
+        # Second-order correction using model_prev_prev
+        D_prev_prev = model_prev_prev
+        D_prev = model_prev
+        
+        # Multistep coefficients
+        D = D_prev + (1 / (2 * r)) * (D_prev - D_prev_prev)
+        
+        # Second-order exponential integrator
+        sqrt_alpha_t = torch.sqrt(alpha_t)
+        sqrt_one_minus_alpha_t = torch.sqrt(1 - alpha_t)
+        
+        x_t_next = (
+            sqrt_alpha_t * x_0_pred +
+            sqrt_one_minus_alpha_t * (
+                D_prev + (torch.exp(h) - 1 - h) / h * D
+            )
+        )
+        
+        return x_t_next
+
+    @torch.no_grad()
+    def dpm_solver_third_order_update(
+        self,
+        x_t: torch.Tensor,
+        t_list: list,
+        model_output_list: list,
+    ) -> torch.Tensor:
+        """
+        Third-order multistep DPM-Solver update (3M).
+        
+        Uses model outputs from three previous steps for even higher accuracy.
+        
+        Args:
+            x_t: Current samples
+            t_list: List of [t_{i-2}, t_{i-1}, t_i, t_{i+1}] (4 timesteps)
+            model_output_list: List of model outputs at [t_{i-2}, t_{i-1}, t_i]
+            
+        Returns:
+            x_{t_{i+1}}: Updated samples
+        """
+        assert len(t_list) == 4 and len(model_output_list) == 3
+        
+        t_prev_prev_prev = t_list[-4]
+        t_prev_prev = t_list[-3]
+        t_prev = t_list[-2]
+        t = t_list[-1]
+        
+        model_prev_prev_prev = model_output_list[-3]
+        model_prev_prev = model_output_list[-2]
+        model_prev = model_output_list[-1]
+        
+        # Get alpha values
+        alphas_cumprod = cast(torch.Tensor, self.alphas_cumprod)
+        alpha_prev_prev_prev = alphas_cumprod[t_prev_prev_prev].view(-1, 1, 1, 1)
+        alpha_prev_prev = alphas_cumprod[t_prev_prev].view(-1, 1, 1, 1)
+        alpha_prev = alphas_cumprod[t_prev].view(-1, 1, 1, 1)
+        alpha_t = alphas_cumprod[t].view(-1, 1, 1, 1)
+        
+        # Compute lambda values
+        lambda_prev_prev_prev = torch.log(alpha_prev_prev_prev) - torch.log(1 - alpha_prev_prev_prev)
+        lambda_prev_prev = torch.log(alpha_prev_prev) - torch.log(1 - alpha_prev_prev)
+        lambda_prev = torch.log(alpha_prev) - torch.log(1 - alpha_prev)
+        lambda_t = torch.log(alpha_t) - torch.log(1 - alpha_t)
+        
+        h = lambda_t - lambda_prev
+        h_prev = lambda_prev - lambda_prev_prev
+        h_prev_prev = lambda_prev_prev - lambda_prev_prev_prev
+        
+        r0 = h_prev / h
+        r1 = h_prev_prev / h
+        
+        # Predict x_0
+        sqrt_alpha_prev = torch.sqrt(alpha_prev)
+        sqrt_one_minus_alpha_prev = torch.sqrt(1 - alpha_prev)
+        x_0_pred = (x_t - sqrt_one_minus_alpha_prev * model_prev) / sqrt_alpha_prev
+        
+        # Third-order correction
+        D_prev_prev_prev = model_prev_prev_prev
+        D_prev_prev = model_prev_prev
+        D_prev = model_prev
+        
+        # Compute divided differences
+        D_1 = (1 / r0) * (D_prev - D_prev_prev)
+        D_2 = (1 / (r0 + r1)) * (D_1 - (1 / r1) * (D_prev_prev - D_prev_prev_prev))
+        
+        # Third-order exponential integrator
+        sqrt_alpha_t = torch.sqrt(alpha_t)
+        sqrt_one_minus_alpha_t = torch.sqrt(1 - alpha_t)
+        
+        exp_h = torch.exp(h)
+        phi_1 = (exp_h - 1) / h
+        phi_2 = (exp_h - 1 - h) / (h ** 2)
+        phi_3 = (exp_h - 1 - h - h ** 2 / 2) / (h ** 3)
+        
+        x_t_next = (
+            sqrt_alpha_t * x_0_pred +
+            sqrt_one_minus_alpha_t * (
+                D_prev +
+                h * phi_1 * D_1 +
+                h ** 2 * phi_2 * D_2 +
+                h ** 3 * phi_3 * D_2  # Simplified third-order term
+            )
+        )
+        
+        return x_t_next
+
+    @torch.no_grad()
+    def sample_dpm_solver(
+        self,
+        batch_size: int,
+        image_shape: Tuple[int, int, int],
+        num_steps: int = 20,
+        order: int = 2,
+        method: str = "multistep",
+        skip_type: str = "time_uniform",
+        **kwargs: Any
+    ) -> torch.Tensor:
+        """
+        DPM-Solver++ sampling.
+        
+        Args:
+            batch_size: Number of samples
+            image_shape: Shape (C, H, W)
+            num_steps: Number of sampling steps (default: 20)
+            order: Solver order (1, 2, or 3)
+            method: "singlestep" or "multistep"
+            skip_type: "time_uniform" or "logSNR"
+            
+        Returns:
+            Generated samples
+        """
+        assert order in [1, 2, 3], f"Order must be 1, 2, or 3, got {order}"
+        assert method in ["singlestep", "multistep"], f"Method must be 'singlestep' or 'multistep'"
+        
+        self.eval_mode()
+        
+        channels, height, width = image_shape
+        
+        # Start with pure noise
+        x_t = torch.randn(batch_size, channels, height, width, device=self.device)
+        
+        # Get timestep schedule
+        timesteps = self.get_time_steps(num_steps, skip_type)
+        timesteps = timesteps.long()
+        
+        if method == "singlestep":
+            # Single-step method: each step is independent
+            for i in range(len(timesteps) - 1):
+                t = timesteps[i]
+                t_prev = timesteps[i + 1]
+                
+                t_batch = t.expand(batch_size)
+                t_prev_batch = t_prev.expand(batch_size)
+                
+                if order == 1:
+                    x_t = self.dpm_solver_first_order_update(x_t, t_batch, t_prev_batch)
+                elif order >= 2:
+                    # For higher orders in single-step, use Runge-Kutta-like approach
+                    # For simplicity, fall back to first-order
+                    x_t = self.dpm_solver_first_order_update(x_t, t_batch, t_prev_batch)
+        
+        else:  # multistep
+            # Store previous model outputs for multistep method
+            model_output_list = []
+            t_list = []
+            
+            for i in range(len(timesteps) - 1):
+                t = timesteps[i]
+                t_next = timesteps[i + 1]
+                
+                t_batch = t.expand(batch_size)
+                t_next_batch = t_next.expand(batch_size)
+                
+                # Compute model output
+                model_output = self.model(x_t, t_batch)
+                
+                # Store for multistep
+                model_output_list.append(model_output)
+                t_list.append(t_batch[0])
+                
+                # Determine which order to use based on available history
+                current_order = min(order, len(model_output_list))
+                
+                if current_order == 1:
+                    x_t = self.dpm_solver_first_order_update(
+                        x_t, t_batch, t_next_batch, model_output
+                    )
+                elif current_order == 2:
+                    # Need at least 2 previous outputs
+                    if len(model_output_list) >= 2:
+                        t_list_subset = t_list[-2:] + [t_next_batch[0]]
+                        x_t = self.dpm_solver_second_order_update(
+                            x_t, t_list_subset, model_output_list[-2:]
+                        )
+                    else:
+                        # Fall back to first-order
+                        x_t = self.dpm_solver_first_order_update(
+                            x_t, t_batch, t_next_batch, model_output
+                        )
+                elif current_order == 3:
+                    # Need at least 3 previous outputs
+                    if len(model_output_list) >= 3:
+                        t_list_subset = t_list[-3:] + [t_next_batch[0]]
+                        x_t = self.dpm_solver_third_order_update(
+                            x_t, t_list_subset, model_output_list[-3:]
+                        )
+                    else:
+                        # Fall back to second-order or first-order
+                        if len(model_output_list) >= 2:
+                            t_list_subset = t_list[-2:] + [t_next_batch[0]]
+                            x_t = self.dpm_solver_second_order_update(
+                                x_t, t_list_subset, model_output_list[-2:]
+                            )
+                        else:
+                            x_t = self.dpm_solver_first_order_update(
+                                x_t, t_batch, t_next_batch, model_output
+                            )
+                
+                # Keep only necessary history (prevent memory buildup)
+                if len(model_output_list) > order:
+                    model_output_list.pop(0)
+                    t_list.pop(0)
+        
+        return x_t
+
 
     @torch.no_grad()
     def sample(
@@ -269,14 +631,18 @@ class DDPM(BaseMethod):
         **kwargs: Any
     ) -> torch.Tensor:
         """
-        Generate samples using either DDPM or DDIM sampling.
+        Generate samples using DDPM, DDIM, or DPM-Solver++.
         
         Args:
             batch_size: Number of samples
             image_shape: Shape (channels, height, width)
-            num_steps: Number of sampling steps (for DDIM, can be less than num_timesteps)
-            sampler: "ddpm" or "ddim"
-            **kwargs: Additional arguments
+            num_steps: Number of sampling steps
+            sampler: "ddpm", "ddim", or "dpm_solver"
+            **kwargs: Additional sampler-specific arguments:
+                - For DPM-Solver:
+                    - order: int (1, 2, or 3) - solver order
+                    - method: str ("singlestep" or "multistep")
+                    - skip_type: str ("time_uniform" or "logSNR")
             
         Returns:
             samples: Generated samples
@@ -311,7 +677,6 @@ class DDPM(BaseMethod):
                 num_steps = self.num_timesteps
                 
             # Create timestep subsequence
-            # e.g., if num_timesteps=1000 and num_steps=100, use [1000, 990, 980, ..., 10, 0]
             if num_steps >= self.num_timesteps:
                 timesteps = list(range(self.num_timesteps - 1, -1, -1))
             else:
@@ -341,10 +706,30 @@ class DDPM(BaseMethod):
                 )
                 
                 x_t = self.reverse_process_ddim(x_t, t_batch, t_prev_batch)
+        
+        elif sampler == "dpm_solver":
+            # DPM-Solver++ sampling
+            if num_steps is None:
+                num_steps = 20  # Default for DPM-Solver
+            
+            # Extract DPM-Solver specific kwargs
+            order = kwargs.get('order', 2)
+            method = kwargs.get('method', 'multistep')
+            skip_type = kwargs.get('skip_type', 'time_uniform')
+            
+            x_t = self.sample_dpm_solver(
+                batch_size=batch_size,
+                image_shape=image_shape,
+                num_steps=num_steps,
+                order=order,
+                method=method,
+                skip_type=skip_type,
+            )
         else:
-            raise ValueError(f"Unknown sampler: {sampler}. Choose 'ddpm' or 'ddim'")
+            raise ValueError(f"Unknown sampler: {sampler}. Choose 'ddpm', 'ddim', or 'dpm_solver'")
         
         return x_t
+
 
     def to(self, *args: Any, **kwargs: Any) -> "DDPM":
         """Move the method to a device."""
