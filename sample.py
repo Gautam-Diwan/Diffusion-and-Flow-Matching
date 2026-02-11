@@ -97,6 +97,14 @@ def main():
     parser.add_argument('--sampler', type=str, default='ddpm',
                    choices=['ddpm', 'ddim'],
                    help='Sampling method: ddpm or ddim (default: ddpm)')
+    parser.add_argument('--order', type=int, default=None,
+	                   help='DPM-Solver order (1, 2, or 3)')
+    parser.add_argument('--dpm_method', type=str, default=None,
+	                   choices=['singlestep', 'multistep'],
+	                   help='DPM-Solver method')
+    parser.add_argument('--skip_type', type=str, default=None,
+	                   choices=['time_uniform', 'logSNR'],
+	                   help='DPM-Solver timestep schedule')
     
     # Other options
     parser.add_argument('--no_ema', action='store_true',
@@ -159,6 +167,22 @@ def main():
 
             num_steps = args.num_steps or config['sampling']['num_steps']
             sampler = args.sampler or config['sampling'].get('sampler', 'ddpm')
+
+            # Build kwargs for DPM-Solver
+            sampling_kwargs = {}
+            if sampler == 'dpm_solver':
+                dpm_config = config['sampling'].get('dpm_solver', {})
+                sampling_kwargs['order'] = args.order or dpm_config.get('order', 2)
+                sampling_kwargs['method'] = args.dpm_method or dpm_config.get('method', 'multistep')
+                sampling_kwargs['skip_type'] = args.skip_type or dpm_config.get('skip_type', 'time_uniform')
+
+            samples = method.sample(
+                batch_size=batch_size,
+                image_shape=image_shape,
+                num_steps=num_steps,
+                sampler=sampler,
+                **sampling_kwargs
+            )
 
             samples = method.sample(
                 batch_size=batch_size,

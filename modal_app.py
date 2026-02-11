@@ -402,10 +402,11 @@ TRAIN_FUNCTIONS = {
 # =============================================================================
 
 
+# In modal_app.py, update the sample function parameters
 @app.function(
     image=image,
     gpu="L40S",
-    timeout=60 * 60 * 3,  # 3 hours
+    timeout=60 * 60 * 3,
     volumes={"/data": volume},
 )
 def sample(
@@ -414,24 +415,21 @@ def sample(
     num_samples: int = None,
     num_steps: int = None,
     sampler: str = 'ddpm',
+    order: int = None,
+    dpm_method: str = None,
+    skip_type: str = None,
 ):
-    """
-    Generate samples from a trained model.
-
-    Uses sample.py via subprocess, similar to how training uses train.py.
-    """
+    """Generate samples from a trained model."""
     import os
     import subprocess
     from datetime import datetime
 
-    # Set up paths
     checkpoint_path = f"/data/{checkpoint}"
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     output_path = f"/data/samples/{method}_{timestamp}.png"
 
     os.makedirs("/data/samples", exist_ok=True)
 
-    # Build command to run sample.py
     cmd = [
         "python",
         "/root/sample.py",
@@ -450,12 +448,17 @@ def sample(
         cmd.extend(["--num_samples", str(num_samples)])
     if num_steps is not None:
         cmd.extend(["--num_steps", str(num_steps)])
+    if order is not None:
+        cmd.extend(["--order", str(order)])
+    if dpm_method is not None:
+        cmd.extend(["--dpm_method", dpm_method])
+    if skip_type is not None:
+        cmd.extend(["--skip_type", skip_type])
 
     subprocess.run(cmd, check=True)
     volume.commit()
 
     return f"Samples saved to {output_path}"
-
 
 # =============================================================================
 # Dataset Download Function
