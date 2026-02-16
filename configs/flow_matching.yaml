@@ -34,8 +34,14 @@ training:
   num_samples: 16
 
 sampling:
-  num_steps: 100  # Flow matching needs fewer steps than DDPM
-  sampler: "euler"
+  num_steps: 20  # Flow matching needs fewer steps than DDPM
+  sampler: "euler"  # Options: "euler", "dpm_solver", "heun"
+
+  # DPM-Solver specific settings
+  dpm_solver:
+    order: 2  # Options: 1, 2, 3 (higher = more accurate but slightly slower)
+    method: "multistep"  # Options: "singlestep", "multistep" (multistep is recommended)
+    skip_type: "logSNR"  # Options: "time_uniform", "logSNR" (logSNR is better for high orders)
 
 infrastructure:
   seed: 42
