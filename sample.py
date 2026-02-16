@@ -95,7 +95,7 @@ def main():
     parser.add_argument('--num_steps', type=int, default=None,
                        help='Number of sampling steps (default: from config)')
     parser.add_argument('--sampler', type=str, default='ddpm',
-                   choices=['ddpm', 'ddim'],
+                   choices=['ddpm', 'ddim', 'dpm_solver', 'euler', 'heun'],
                    help='Sampling method: ddpm or ddim (default: ddpm)')
     parser.add_argument('--order', type=int, default=None,
 	                   help='DPM-Solver order (1, 2, or 3)')
@@ -166,7 +166,10 @@ def main():
             batch_size = min(args.batch_size, remaining)
 
             num_steps = args.num_steps or config['sampling']['num_steps']
-            sampler = args.sampler or config['sampling'].get('sampler', 'ddpm')
+            default_sampler = 'euler' if args.method == 'flow_matching' else 'ddpm'
+            sampler = args.sampler or config['sampling'].get('sampler', default_sampler)
+
+            print(f"Sampling batch of size {batch_size} with sampler '{sampler}' and num steps: {num_steps}")
 
             # Build kwargs for DPM-Solver
             sampling_kwargs = {}
@@ -180,16 +183,9 @@ def main():
                 batch_size=batch_size,
                 image_shape=image_shape,
                 num_steps=num_steps,
+                # TODO: add your arugments here
                 sampler=sampler,
                 **sampling_kwargs
-            )
-
-            samples = method.sample(
-                batch_size=batch_size,
-                image_shape=image_shape,
-                num_steps=num_steps,
-                # TODO: add your arugments here
-                sampler=sampler
             )
 
             # Save individual images immediately or collect for grid

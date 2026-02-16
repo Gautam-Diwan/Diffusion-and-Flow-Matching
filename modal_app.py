@@ -518,6 +518,9 @@ def evaluate_torch_fidelity(
     batch_size: int = 128,
     num_steps: int = None,
     sampler: str = 'ddpm',
+    order: int = None,
+    dpm_method: str = None,
+    skip_type: str = None,
     override: bool = False,
 ):
     """
@@ -526,12 +529,16 @@ def evaluate_torch_fidelity(
     Uses the fidelity command to compute metrics directly.
 
     Args:
-        method: 'ddpm'
+        method: 'ddpm' or 'flow_matching'
         checkpoint: Path to checkpoint (relative to /data)
         metrics: Comma-separated: 'fid', 'kid', 'is' (default: 'fid,kid')
         num_samples: Number of samples to generate
         batch_size: Batch size
         num_steps: Sampling steps (optional)
+        sampler: Sampling method ('ddpm', 'ddim', 'dpm_solver', 'euler', 'heun')
+        order: DPM-Solver order (1, 2, or 3)
+        dpm_method: DPM-Solver method ('singlestep' or 'multistep')
+        skip_type: DPM-Solver skip type ('time_uniform' or 'logSNR')
         override: Force regenerate samples even if they exist
     """
     import sys
@@ -635,6 +642,12 @@ def evaluate_torch_fidelity(
 
         if num_steps:
             sample_cmd.extend(["--num_steps", str(num_steps)])
+        if order is not None:
+            sample_cmd.extend(["--order", str(order)])
+        if dpm_method is not None:
+            sample_cmd.extend(["--dpm_method", dpm_method])
+        if skip_type is not None:
+            sample_cmd.extend(["--skip_type", skip_type])
 
         subprocess.run(sample_cmd, check=True)
         print(f"Generated {num_samples} samples to {generated_dir}")
@@ -686,7 +699,6 @@ def evaluate_torch_fidelity(
             print(f"\nStderr:\n{e.stderr}")
         raise
 
-
 # =============================================================================
 # CLI Entry Points
 # =============================================================================
@@ -704,7 +716,10 @@ def main(
     num_samples: int = None,
     num_steps: int = None,
     metrics: str = None,
-    sampler: str = 'ddpm',
+    sampler: str = None,
+    order: int = None,
+    dpm_method: str = None,
+    skip_type: str = None,
     overfit_single_batch: bool = False,
     override: bool = False,
 ):
@@ -742,7 +757,7 @@ def main(
         result = train_fn.remote(
             method=method,
             config_path=config,
-            resume_from=checkpoint,  # ADD THIS LINE
+            resume_from=checkpoint,
             num_iterations=iterations,
             batch_size=batch_size,
             learning_rate=learning_rate,
@@ -762,12 +777,21 @@ def main(
     elif action == "evaluate" or action == "evaluate_torch_fidelity":
         if checkpoint is None:
             checkpoint = f"checkpoints/{method}/{method}_final.pt"
+        
+        # Load config to get default sampler if not specified
+        local_config_path = config or f"configs/{method}.yaml"
+        import yaml
+        with open(local_config_path, "r") as f:
+            local_config = yaml.safe_load(f)
+        
+        # Use provided sampler, or fall back to config sampler
+        effective_sampler = sampler or local_config['sampling'].get('sampler', 'ddpm')
 
         eval_kwargs = {
             "method": method,
             "checkpoint": checkpoint,
             "override": override,
-            "sampler": sampler,
+            "sampler": effective_sampler,
         }
         if metrics is not None:
             eval_kwargs["metrics"] = metrics
@@ -777,6 +801,12 @@ def main(
             eval_kwargs["batch_size"] = batch_size
         if num_steps is not None:
             eval_kwargs["num_steps"] = num_steps
+        if order is not None:
+            eval_kwargs["order"] = order
+        if dpm_method is not None:
+            eval_kwargs["dpm_method"] = dpm_method
+        if skip_type is not None:
+            eval_kwargs["skip_type"] = skip_type
 
         result = evaluate_torch_fidelity.remote(**eval_kwargs)
         print(result)
