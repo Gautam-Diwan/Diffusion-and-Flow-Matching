@@ -14,6 +14,7 @@ from datetime import datetime
 import yaml
 import torch
 from tqdm import tqdm
+import json
 
 from src.models import create_model_from_config
 from src.data import save_image
@@ -160,6 +161,9 @@ def main():
     if not args.grid:
         os.makedirs(args.output_dir, exist_ok=True)
 
+    all_samples = []
+    all_metrics = []
+
     with torch.no_grad():
         pbar = tqdm(total=args.num_samples, desc="Generating samples")
         while remaining > 0:
@@ -179,14 +183,15 @@ def main():
                 sampling_kwargs['method'] = args.dpm_method or dpm_config.get('method', 'multistep')
                 sampling_kwargs['skip_type'] = args.skip_type or dpm_config.get('skip_type', 'time_uniform')
 
-            samples = method.sample(
+            samples, metrics = method.sample(
                 batch_size=batch_size,
                 image_shape=image_shape,
                 num_steps=num_steps,
-                # TODO: add your arugments here
                 sampler=sampler,
                 **sampling_kwargs
             )
+            
+            all_metrics.append(metrics)
 
             # Save individual images immediately or collect for grid
             if args.grid:
@@ -202,6 +207,22 @@ def main():
             pbar.update(batch_size)
 
         pbar.close()
+
+    # Aggregate metrics
+    total_nfe = sum(m['nfe'] for m in all_metrics)
+    total_time = sum(m['wall_clock_time'] for m in all_metrics)
+    avg_nfe_per_sample = total_nfe / args.num_samples
+    avg_time_per_sample = total_time / args.num_samples
+    
+    summary_metrics = {
+        'total_samples': args.num_samples,
+        'total_nfe': total_nfe,
+        'total_wall_clock_time': total_time,
+        'avg_nfe_per_sample': avg_nfe_per_sample,
+        'avg_time_per_sample': avg_time_per_sample,
+        'sampler': sampler,
+        'num_steps': num_steps,
+    }
 
     # Save samples
     if args.grid:
@@ -220,6 +241,12 @@ def main():
     # Restore EMA if applied
     if not args.no_ema:
         ema.restore()
+
+    print(f"\nSampling Metrics:")
+    print(f"  Total NFE: {total_nfe}")
+    print(f"  Total Time: {total_time:.2f}s")
+    print(f"  Avg NFE/sample: {avg_nfe_per_sample:.1f}")
+    print(f"  Avg Time/sample: {avg_time_per_sample:.3f}s")
 
 
 if __name__ == '__main__':

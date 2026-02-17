@@ -9,6 +9,7 @@ All parameters are read from config YAML files first, then overridden by command
 """
 
 import modal
+import json
 
 # =============================================================================
 # Modal App Definition
@@ -598,6 +599,7 @@ def evaluate_torch_fidelity(
     import os
     import shutil
     import glob
+    import json
 
     # Check if samples already exist
     need_generation = True
@@ -684,10 +686,43 @@ def evaluate_torch_fidelity(
 
     print(f"\nRunning command: {' '.join(fidelity_cmd)}\n")
 
+    sample_metrics = {}
+
+    # After sample generation, load metrics
+    if need_generation or True:  # Always try to load metrics
+        metrics_path = os.path.join(generated_dir, 'metrics.json')
+        if os.path.exists(metrics_path):
+            import json
+            with open(metrics_path, 'r') as f:
+                sample_metrics = json.load(f)
+            
+            print("\n" + "=" * 60)
+            print("SAMPLING EFFICIENCY METRICS")
+            print("=" * 60)
+            print(f"Sampler: {sample_metrics.get('sampler', 'N/A')}")
+            print(f"Steps: {sample_metrics.get('num_steps', 'N/A')}")
+            print(f"Total Samples: {sample_metrics.get('total_samples', 'N/A')}")
+            print(f"\nNumber of Function Evaluations (NFE):")
+            print(f"  Total NFE: {sample_metrics.get('total_nfe', 'N/A')}")
+            print(f"  Avg per sample: {sample_metrics.get('avg_nfe_per_sample', 'N/A'):.1f}")
+            print(f"\nWall-clock Time:")
+            print(f"  Total: {sample_metrics.get('total_wall_clock_time', 'N/A'):.2f}s")
+            print(f"  Avg per sample: {sample_metrics.get('avg_time_per_sample', 'N/A'):.3f}s")
+            print("=" * 60 + "\n")
+
     try:
         result = subprocess.run(fidelity_cmd, check=True, capture_output=True, text=True)
         volume.commit()
-        return result.stdout
+        # Combine results
+        output = result.stdout
+        if os.path.exists(metrics_path):
+            output = f"\n{'='*60}\nSAMPLING METRICS\n{'='*60}\n"
+            output += json.dumps(sample_metrics, indent=2)
+            output += f"\n\n{'='*60}\nIMAGE QUALITY METRICS\n{'='*60}\n"
+            output += result.stdout
+        
+        return output
+    
     except subprocess.CalledProcessError as e:
         # Print the error output to help debug
         print(f"\nError running fidelity command:")

@@ -68,17 +68,13 @@ class BaseMethod(nn.Module, ABC):
         batch_size: int,
         image_shape: Tuple[int, int, int],
         **kwargs: Any
-    ) -> torch.Tensor:
+    ) -> Tuple[torch.Tensor, Dict[str, Any]]:
         """
         Generate samples from the model.
 
-        Args:
-            batch_size: Number of samples to generate
-            image_shape: Shape of each image (channels, height, width)
-            **kwargs: Additional method-specific arguments
-
         Returns:
             samples: Generated samples of shape (batch_size, *image_shape)
+            metrics: Dictionary with 'nfe' and 'wall_clock_time' keys
         """
         pass
 
