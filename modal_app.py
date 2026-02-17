@@ -415,7 +415,7 @@ def sample(
     checkpoint: str = "checkpoints/ddpm/ddpm_final.pt",
     num_samples: int = None,
     num_steps: int = None,
-    sampler: str = 'ddpm',
+    sampler: str = None,
     order: int = None,
     dpm_method: str = None,
     skip_type: str = None,
@@ -424,6 +424,10 @@ def sample(
     import os
     import subprocess
     from datetime import datetime
+
+    # Set default sampler based on method if not specified
+    if sampler is None:
+        sampler = 'euler' if method == 'flow_matching' else 'ddpm'
 
     checkpoint_path = f"/data/{checkpoint}"
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -807,6 +811,10 @@ def main(
             checkpoint=checkpoint,
             num_samples=num_samples,
             num_steps=num_steps,
+            sampler=sampler,
+            order=order,
+            dpm_method=dpm_method,
+            skip_type=skip_type,
         )
         print(result)
     elif action == "evaluate" or action == "evaluate_torch_fidelity":
