@@ -15,6 +15,8 @@ import torch
 import torch.nn as nn
 from typing import Any, Dict, Tuple, List
 from .base import BaseMethod
+from src.utils import NFECounter
+import time
 
 
 class FlowMatching(BaseMethod):
@@ -98,7 +100,7 @@ class FlowMatching(BaseMethod):
         return loss, metrics
     
     @torch.no_grad()
-    def sample_euler(
+    def _sample_euler_impl(
         self,
         batch_size: int,
         image_shape: Tuple[int, int, int],
@@ -162,7 +164,7 @@ class FlowMatching(BaseMethod):
         return x_t
     
     @torch.no_grad()
-    def sample_heun(
+    def _sample_heun_impl(
         self,
         batch_size: int,
         image_shape: Tuple[int, int, int],
@@ -277,7 +279,7 @@ class FlowMatching(BaseMethod):
         return times
     
     @torch.no_grad()
-    def sample_dpm_solver(
+    def _sample_dpm_solver_impl(
         self,
         batch_size: int,
         image_shape: Tuple[int, int, int],
@@ -556,52 +558,44 @@ class FlowMatching(BaseMethod):
         num_steps: int = 20,
         sampler: str = "euler",
         **kwargs: Any
-    ) -> torch.Tensor:
-        """
-        Generate samples using the specified sampler.
+    ) -> Tuple[torch.Tensor, Dict[str, Any]]:
+        """Generate samples and return metrics."""
         
-        Args:
-            batch_size: Number of samples to generate
-            image_shape: Shape (channels, height, width)
-            num_steps: Number of integration steps
-            sampler: Sampling method
-                - "euler": First-order Euler method (fast, less accurate)
-                - "heun": Second-order Heun method (good balance)
-                - "dpm_solver": High-order DPM-Solver (most accurate)
-            **kwargs: Sampler-specific arguments:
-                For DPM-Solver:
-                    - order: int (1, 2, or 3)
-                    - method: str ("singlestep" or "multistep")
-                    - skip_type: str ("time_uniform" or "logSNR")
+        # Wrap model with NFE counter
+        nfe_counter = NFECounter(self.model)
+        original_model = self.model
+        self.model = nfe_counter
         
-        Returns:
-            Generated samples of shape (batch_size, *image_shape)
-        """
-        if sampler == "euler":
-            return self.sample_euler(batch_size, image_shape, num_steps, **kwargs)
+        start_time = time.time()
         
-        elif sampler == "heun":
-            return self.sample_heun(batch_size, image_shape, num_steps, **kwargs)
+        try:
+            if sampler == "euler":
+                samples = self._sample_euler_impl(batch_size, image_shape, num_steps, **kwargs)
+            elif sampler == "heun":
+                samples = self._sample_heun_impl(batch_size, image_shape, num_steps, **kwargs)
+            elif sampler == "dpm_solver":
+                order = kwargs.get("order", 2)
+                method = kwargs.get("method", "multistep")
+                skip_type = kwargs.get("skip_type", "time_uniform")
+                samples = self._sample_dpm_solver_impl(
+                    batch_size, image_shape, num_steps, order, method, skip_type
+                )
+            else:
+                raise ValueError(f"Unknown sampler: {sampler}")
+        finally:
+            # Restore original model
+            self.model = original_model
         
-        elif sampler == "dpm_solver":
-            order = kwargs.get("order", 2)
-            method = kwargs.get("method", "multistep")
-            skip_type = kwargs.get("skip_type", "time_uniform")
-            
-            return self.sample_dpm_solver(
-                batch_size=batch_size,
-                image_shape=image_shape,
-                num_steps=num_steps,
-                order=order,
-                method=method,
-                skip_type=skip_type,
-            )
+        wall_clock_time = time.time() - start_time
         
-        else:
-            raise ValueError(
-                f"Unknown sampler: {sampler}. "
-                f"Supported: 'euler', 'heun', 'dpm_solver'"
-            )
+        metrics = {
+            'nfe': nfe_counter.nfe,
+            'wall_clock_time': wall_clock_time,
+            'sampler': sampler,
+            'num_steps': num_steps,
+        }
+        
+        return samples, metrics
     
     @classmethod
     def from_config(
