@@ -114,9 +114,13 @@ class CelebADataset(Dataset):
 
         cache_dir = None
         if self.root:
-            os.makedirs(self.root, exist_ok=True)
-            cache_dir = self.root
-            print(f"Using HuggingFace cache directory: {self.root}")
+            try:
+                os.makedirs(self.root, exist_ok=True)
+                cache_dir = self.root
+                print(f"Using HuggingFace cache directory: {self.root}")
+            except OSError as e:
+                print(f"Warning: could not create data root '{self.root}' ({e}). Using default HuggingFace cache.")
+                cache_dir = None
 
         if hf_split == "all":
             self.dataset = load_dataset(self.repo_name, cache_dir=cache_dir)

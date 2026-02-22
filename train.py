@@ -40,10 +40,11 @@ from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
 from tqdm import tqdm
 
-from src.models import UNet, create_model_from_config
+from src.models import UNet, create_model_from_config, create_meanflow_model_from_config
 from src.data import create_dataloader_from_config, save_image, unnormalize
 from src.methods import DDPM
 from src.methods.flow_matching import FlowMatching
+from src.methods.mean_flow import MeanFlow
 from src.utils import EMA
 
 import wandb
@@ -234,18 +235,21 @@ def generate_samples(
 
     try:
         # Run sampling (now using EMA weights if applied)
-        samples = method.sample(
-            batch_size=num_samples, 
-            image_shape=image_shape, 
+        result = method.sample(
+            batch_size=num_samples,
+            image_shape=image_shape,
             **sampling_kwargs
         )
     finally:
         # CRITICAL: Always restore original weights to continue training correctly
         if using_ema:
             ema.restore()  # Restore original training weights
-            
+
     method.train_mode()
-    return samples
+    # method.sample returns (samples, metrics); return only the tensor
+    if isinstance(result, tuple):
+        result = result[0]
+    return result
 
 def save_samples(
     samples: torch.Tensor,
@@ -380,7 +384,10 @@ def train(
     # Create model
     if is_main_process:
         print("Creating model...")
-    base_model = create_model_from_config(config).to(device)
+    if method_name == 'mean_flow':
+        base_model = create_meanflow_model_from_config(config).to(device)
+    else:
+        base_model = create_model_from_config(config).to(device)
 
     torch.manual_seed(seed + rank)
     if torch.cuda.is_available():
@@ -409,8 +416,10 @@ def train(
         method = DDPMx0.from_config(model, config, device)
     elif method_name == 'flow_matching':
         method = FlowMatching.from_config(model, config, device)
+    elif method_name == 'mean_flow':
+        method = MeanFlow.from_config(model, config, device)
     else:
-        raise ValueError(f"Unknown method: {method_name}. Only 'ddpm' is currently supported.")
+        raise ValueError(f"Unknown method: {method_name}. Supported: ddpm, ddpmx0, flow_matching, mean_flow.")
 
     # Create optimizer
     optimizer = create_optimizer(model, config) # default to AdamW optimizer
@@ -627,13 +636,15 @@ def train(
                 sampling_kwargs = {}
                 sampling_config = config.get('sampling', {})
                 sampler = sampling_config.get('sampler', 'ddpm')
-                
+                sampling_kwargs['num_steps'] = sampling_config.get('num_steps', 20)
+                sampling_kwargs['sampler'] = sampler
+
                 if sampler == 'dpm_solver':
                     dpm_config = sampling_config.get('dpm_solver', {})
                     sampling_kwargs['order'] = dpm_config.get('order', 2)
                     sampling_kwargs['method'] = dpm_config.get('method', 'multistep')
                     sampling_kwargs['skip_type'] = dpm_config.get('skip_type', 'time_uniform')
-                
+
                 samples = generate_samples(
                     method,
                     num_samples,
@@ -699,8 +710,8 @@ def train(
 def main():
     parser = argparse.ArgumentParser(description='Train diffusion models')
     parser.add_argument('--method', type=str, required=True,
-                       choices=['ddpm', 'flow_matching'], # You can add more later
-                       help='Method to train (currently only ddpm is supported)')
+                       choices=['ddpm', 'ddpmx0', 'flow_matching', 'mean_flow'],
+                       help='Method to train')
     parser.add_argument('--config', type=str, required=True,
                        help='Path to config file (e.g., configs/ddpm.yaml)')
     parser.add_argument('--resume', type=str, default=None,

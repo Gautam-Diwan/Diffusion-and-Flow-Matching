@@ -16,20 +16,24 @@ import torch
 from tqdm import tqdm
 import json
 
-from src.models import create_model_from_config
+from src.models import create_model_from_config, create_meanflow_model_from_config
 from src.data import save_image
 from src.methods import DDPM
 from src.methods.flow_matching import FlowMatching
+from src.methods.mean_flow import MeanFlow
 from src.utils import EMA
 
 
-def load_checkpoint(checkpoint_path: str, device: torch.device):
+def load_checkpoint(checkpoint_path: str, device: torch.device, method: str = "ddpm"):
     """Load checkpoint and return model, config, and EMA."""
     checkpoint = torch.load(checkpoint_path, map_location=device)
     config = checkpoint['config']
-    
-    # Create model
-    model = create_model_from_config(config).to(device)
+
+    # Create model (MeanFlow uses UNetMeanFlow, others use UNet)
+    if method == 'mean_flow':
+        model = create_meanflow_model_from_config(config).to(device)
+    else:
+        model = create_model_from_config(config).to(device)
     model.load_state_dict(checkpoint['model'])
     
     # Create EMA and load
@@ -77,8 +81,8 @@ def main():
     parser.add_argument('--checkpoint', type=str, required=True,
                        help='Path to model checkpoint')
     parser.add_argument('--method', type=str, required=True,
-                       choices=['ddpm', 'flow_matching'], # You can add more later
-                       help='Method used for training (currently only ddpm is supported)')
+                       choices=['ddpm', 'flow_matching', 'mean_flow'],
+                       help='Method used for training')
     parser.add_argument('--num_samples', type=int, default=64,
                        help='Number of samples to generate')
     parser.add_argument('--output_dir', type=str, default='samples',
@@ -127,15 +131,17 @@ def main():
     
     # Load checkpoint
     print(f"Loading checkpoint from {args.checkpoint}...")
-    model, config, ema = load_checkpoint(args.checkpoint, device)
-    
+    model, config, ema = load_checkpoint(args.checkpoint, device, method=args.method)
+
     # Create method
     if args.method == 'ddpm':
         method = DDPM.from_config(model, config, device)
     elif args.method == 'flow_matching':
         method = FlowMatching.from_config(model, config, device)
+    elif args.method == 'mean_flow':
+        method = MeanFlow.from_config(model, config, device)
     else:
-        raise ValueError(f"Unknown method: {args.method}. Only 'ddpm' is currently supported.")
+        raise ValueError(f"Unknown method: {args.method}. Supported: ddpm, flow_matching, mean_flow.")
     
     # Apply EMA weights
     if not args.no_ema:
@@ -170,24 +176,25 @@ def main():
             batch_size = min(args.batch_size, remaining)
 
             num_steps = args.num_steps or config['sampling']['num_steps']
-            default_sampler = 'euler' if args.method == 'flow_matching' else 'ddpm'
+            default_sampler = 'meanflow' if args.method == 'mean_flow' else ('euler' if args.method == 'flow_matching' else 'ddpm')
             sampler = args.sampler or config['sampling'].get('sampler', default_sampler)
 
             print(f"Sampling batch of size {batch_size} with sampler '{sampler}' and num steps: {num_steps}")
 
-            # Build kwargs for DPM-Solver
-            sampling_kwargs = {}
+            # Build kwargs for DPM-Solver (ignored by MeanFlow)
+            sampling_kwargs = {'num_steps': num_steps}
             if sampler == 'dpm_solver':
+                sampling_kwargs['sampler'] = sampler
                 dpm_config = config['sampling'].get('dpm_solver', {})
                 sampling_kwargs['order'] = args.order or dpm_config.get('order', 2)
                 sampling_kwargs['method'] = args.dpm_method or dpm_config.get('method', 'multistep')
                 sampling_kwargs['skip_type'] = args.skip_type or dpm_config.get('skip_type', 'time_uniform')
+            else:
+                sampling_kwargs['sampler'] = sampler
 
             samples, metrics = method.sample(
                 batch_size=batch_size,
                 image_shape=image_shape,
-                num_steps=num_steps,
-                sampler=sampler,
                 **sampling_kwargs
             )
             
