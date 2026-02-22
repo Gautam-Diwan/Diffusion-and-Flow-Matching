@@ -18,6 +18,15 @@ model:
   dropout: 0.1
   use_scale_shift_norm: true
 
+# MeanFlow-specific: (r,t) sampling and loss
+method:
+  r_t_sampler: "logit_normal"  # "uniform" or "logit_normal"
+  logit_normal_mu: -0.4
+  logit_normal_sigma: 1.0
+  pct_r_neq_t: 0.25           # fraction of steps with r != t (rest is Flow Matching)
+  loss_adaptive_p: 1.0        # 0 = plain MSE
+  loss_adaptive_c: 1.0e-3
+
 training:
   batch_size: 128
   learning_rate: 2e-4
@@ -34,14 +43,8 @@ training:
   num_samples: 16
 
 sampling:
-  num_steps: 20  # Flow matching needs fewer steps than DDPM
-  sampler: "euler"  # Options: "euler", "dpm_solver", "heun"
-
-  # DPM-Solver specific settings
-  dpm_solver:
-    order: 2  # Options: 1, 2, 3 (higher = more accurate but slightly slower)
-    method: "multistep"  # Options: "singlestep", "multistep" (multistep is recommended)
-    skip_type: "logSNR"  # Options: "time_uniform", "logSNR" (logSNR is better for high orders)
+  num_steps: 1    # 1-NFE by default; use 2-4 for few-step fallback
+  sampler: "meanflow"
 
 infrastructure:
   seed: 42

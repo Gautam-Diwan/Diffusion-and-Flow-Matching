@@ -9,10 +9,12 @@ from .base import BaseMethod
 from .ddpm import DDPM
 from .flow_matching import FlowMatching
 from .ddpmx0 import DDPMx0
+from .mean_flow import MeanFlow
 
 __all__ = [
     'BaseMethod',
     'DDPM',
     'FlowMatching',
     'DDPMx0',
+    'MeanFlow',
 ]
