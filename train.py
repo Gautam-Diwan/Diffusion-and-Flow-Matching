@@ -632,14 +632,14 @@ def train(
             if is_main_process:
                 print(f"\nGenerating samples at step {step + 1}...")
                 
-                # Build sampling kwargs
+                # Build sampling kwargs (use sampler_name to avoid overwriting DataLoader sampler)
                 sampling_kwargs = {}
                 sampling_config = config.get('sampling', {})
-                sampler = sampling_config.get('sampler', 'ddpm')
+                sampler_name = sampling_config.get('sampler', 'ddpm')
                 sampling_kwargs['num_steps'] = sampling_config.get('num_steps', 20)
-                sampling_kwargs['sampler'] = sampler
+                sampling_kwargs['sampler'] = sampler_name
 
-                if sampler == 'dpm_solver':
+                if sampler_name == 'dpm_solver':
                     dpm_config = sampling_config.get('dpm_solver', {})
                     sampling_kwargs['order'] = dpm_config.get('order', 2)
                     sampling_kwargs['method'] = dpm_config.get('method', 'multistep')

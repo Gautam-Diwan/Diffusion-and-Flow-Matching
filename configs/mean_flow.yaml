@@ -28,7 +28,7 @@ method:
   loss_adaptive_c: 1.0e-3
 
 training:
-  batch_size: 128
+  batch_size: 64   # smaller than flow_matching: JVP doubles memory use; use 32 if OOM on your GPU
   learning_rate: 2e-4
   weight_decay: 0.0
   betas: [0.9, 0.999]
@@ -52,6 +52,7 @@ infrastructure:
   num_gpus: 1
   mixed_precision: true
   compile_model: false
+  # If OOM on large GPU: try batch_size 32 and/or PYTORCH_ALLOC_CONF=expandable_segments:True
 
 checkpoint:
   dir: "./checkpoints"
