@@ -1,5 +1,5 @@
 ssh -i "gautam-diffusion-aws.pem" ubuntu@ec2-54-90-214-79.compute-1.amazonaws.com
-sudo apt update && sudo apt install -y nvidia-driver-580 nvidia-utils-580 python3.12-venv tmux
+sudo apt update && sudo apt install -y nvidia-driver-580 nvidia-utils-580 python3.12-venv python3.12-dev build-essential tmux
 nvidia-smi
 mkdir hw4 && cd hw4
 git clone https://github.com/Gautam-Diwan/Diffusion-and-Flow-Matching.git

@@ -34,6 +34,9 @@ from typing import Optional, Dict, Any
 
 import yaml
 import torch
+torch.set_float32_matmul_precision("high")  # best default on Ada/L40S
+torch.backends.cuda.matmul.allow_tf32 = True
+torch.backends.cudnn.allow_tf32 = True
 import torch.nn as nn
 import torch.distributed as dist
 from torch.amp import GradScaler, autocast
