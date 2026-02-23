@@ -37,7 +37,7 @@ method:
   interval_weight_alpha: 0.5
 
 training:
-  batch_size: 128
+  batch_size: 64
   learning_rate: 2e-4
   weight_decay: 0.0
   betas: [0.9, 0.999]
