@@ -27,7 +27,7 @@ student_model:
   attention_resolutions: [8, 16]
 
 teacher:
-  checkpoint_path: "./checkpoints/progressive_distillation_20_10_final.pt"
+  checkpoint_path: "./logs/progressive_distillation_20260223_114254/checkpoints/progressive_distillation_final.pt"
   use_ema: true
   sampler: "dpm_solver"
   num_steps: 10
