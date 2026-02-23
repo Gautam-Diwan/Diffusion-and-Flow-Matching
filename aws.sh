@@ -23,11 +23,21 @@ python train.py --method progressive_distillation --config configs/progressive_d
 # Optional: Sample from Progressive Distillation
 python sample.py --method progressive_distillation --config configs/progressive_distillation_20_to_10.yaml
 
+# Progressive Distillation 10 to 5
+python train.py --method progressive_distillation --config configs/progressive_distillation_10_to_5.yaml
+/scripts/evaluate_torch_fidelity.sh --checkpoint <distill_ckpt.pt> --method progressive_distillation --num-samples 1000 --num-steps 10 --metrics kid
+
+# Optional: Sample from Progressive Distillation 10 to 5
+python sample.py --method progressive_distillation --config configs/progressive_distillation_10_to_5.yaml
+
 tmux kill-session -t training_session
 # Evaluate metrics (FID/KID): generates samples from checkpoint then runs torch-fidelity
 ./scripts/evaluate_torch_fidelity.sh \
   --method mean_flow \
   --checkpoint logs/mean_flow_20260222_195259/checkpoints/mean_flow_0025000.pt \
   --num-steps 1
+  --metrics fid,kid
+  --num-samples 1000
+  --dataset-path ./data/celeba-subset/train/images
 # Or on Modal:
 # ./scripts/evaluate_modal_torch_fidelity.sh --method mean_flow --checkpoint logs/mean_flow_20260222_195259/checkpoints/mean_flow_0025000.pt --num-steps 1 --metrics fid,kid
