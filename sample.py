@@ -36,9 +36,11 @@ def load_checkpoint(checkpoint_path: str, device: torch.device, method: str = "d
         model = create_model_from_config(config).to(device)
     model.load_state_dict(checkpoint['model'])
     
-    # Create EMA and load
-    ema = EMA(model, decay=config['training']['ema_decay'])
-    ema.load_state_dict(checkpoint['ema'])
+    # Create EMA only if checkpoint contains it.
+    ema = None
+    if 'ema' in checkpoint:
+        ema = EMA(model, decay=config['training']['ema_decay'])
+        ema.load_state_dict(checkpoint['ema'])
     
     return model, config, ema
 
@@ -81,7 +83,7 @@ def main():
     parser.add_argument('--checkpoint', type=str, required=True,
                        help='Path to model checkpoint')
     parser.add_argument('--method', type=str, required=True,
-                       choices=['ddpm', 'flow_matching', 'mean_flow'],
+                       choices=['ddpm', 'flow_matching', 'mean_flow', 'progressive_distillation'],
                        help='Method used for training')
     parser.add_argument('--num_samples', type=int, default=64,
                        help='Number of samples to generate')
@@ -99,9 +101,9 @@ def main():
     # Sampling arguments
     parser.add_argument('--num_steps', type=int, default=None,
                        help='Number of sampling steps (default: from config)')
-    parser.add_argument('--sampler', type=str, default='ddpm',
+    parser.add_argument('--sampler', type=str, default=None,
                    choices=['ddpm', 'ddim', 'dpm_solver', 'euler', 'heun'],
-                   help='Sampling method: ddpm or ddim (default: ddpm)')
+                   help='Sampling method (default: from config/method)')
     parser.add_argument('--order', type=int, default=None,
 	                   help='DPM-Solver order (1, 2, or 3)')
     parser.add_argument('--dpm_method', type=str, default=None,
@@ -138,15 +140,23 @@ def main():
         method = DDPM.from_config(model, config, device)
     elif args.method == 'flow_matching':
         method = FlowMatching.from_config(model, config, device)
+    elif args.method == 'progressive_distillation':
+        # Distilled student checkpoints are sampled with FlowMatching samplers.
+        method = FlowMatching.from_config(model, config, device)
     elif args.method == 'mean_flow':
         method = MeanFlow.from_config(model, config, device)
     else:
-        raise ValueError(f"Unknown method: {args.method}. Supported: ddpm, flow_matching, mean_flow.")
+        raise ValueError(
+            f"Unknown method: {args.method}. "
+            "Supported: ddpm, flow_matching, mean_flow, progressive_distillation."
+        )
     
     # Apply EMA weights
-    if not args.no_ema:
+    if ema is not None and not args.no_ema:
         print("Using EMA weights")
         ema.apply_shadow()
+    elif ema is None:
+        print("No EMA weights found in checkpoint, using training weights")
     else:
         print("Using training weights (no EMA)")
     
@@ -176,7 +186,11 @@ def main():
             batch_size = min(args.batch_size, remaining)
 
             num_steps = args.num_steps or config['sampling']['num_steps']
-            default_sampler = 'meanflow' if args.method == 'mean_flow' else ('euler' if args.method == 'flow_matching' else 'ddpm')
+            default_sampler = (
+                'meanflow'
+                if args.method == 'mean_flow'
+                else ('dpm_solver' if args.method == 'progressive_distillation' else ('euler' if args.method == 'flow_matching' else 'ddpm'))
+            )
             sampler = args.sampler or config['sampling'].get('sampler', default_sampler)
 
             print(f"Sampling batch of size {batch_size} with sampler '{sampler}' and num steps: {num_steps}")
@@ -246,7 +260,7 @@ def main():
         print(f"Saved {args.num_samples} individual images to {args.output_dir}")
 
     # Restore EMA if applied
-    if not args.no_ema:
+    if ema is not None and not args.no_ema:
         ema.restore()
 
     print(f"\nSampling Metrics:")

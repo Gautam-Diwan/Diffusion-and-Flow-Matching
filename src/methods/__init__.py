@@ -10,6 +10,7 @@ from .ddpm import DDPM
 from .flow_matching import FlowMatching
 from .ddpmx0 import DDPMx0
 from .mean_flow import MeanFlow
+from .progressive_distillation import ProgressiveDistillation
 
 __all__ = [
     'BaseMethod',
@@ -17,4 +18,5 @@ __all__ = [
     'FlowMatching',
     'DDPMx0',
     'MeanFlow',
+    'ProgressiveDistillation',
 ]

@@ -45,6 +45,7 @@ from src.data import create_dataloader_from_config, save_image, unnormalize
 from src.methods import DDPM
 from src.methods.flow_matching import FlowMatching
 from src.methods.mean_flow import MeanFlow
+from src.methods.progressive_distillation import ProgressiveDistillation
 from src.utils import EMA
 
 import wandb
@@ -466,8 +467,13 @@ def train(
         method = FlowMatching.from_config(model, config, device)
     elif method_name == 'mean_flow':
         method = MeanFlow.from_config(model, config, device)
+    elif method_name == 'progressive_distillation':
+        method = ProgressiveDistillation.from_config(model, config, device)
     else:
-        raise ValueError(f"Unknown method: {method_name}. Supported: ddpm, ddpmx0, flow_matching, mean_flow.")
+        raise ValueError(
+            f"Unknown method: {method_name}. "
+            "Supported: ddpm, ddpmx0, flow_matching, mean_flow, progressive_distillation."
+        )
 
     # Create optimizer
     optimizer = create_optimizer(model, config) # default to AdamW optimizer
@@ -758,7 +764,7 @@ def train(
 def main():
     parser = argparse.ArgumentParser(description='Train diffusion models')
     parser.add_argument('--method', type=str, required=True,
-                       choices=['ddpm', 'ddpmx0', 'flow_matching', 'mean_flow'],
+                       choices=['ddpm', 'ddpmx0', 'flow_matching', 'mean_flow', 'progressive_distillation'],
                        help='Method to train')
     parser.add_argument('--config', type=str, required=True,
                        help='Path to config file (e.g., configs/ddpm.yaml)')
