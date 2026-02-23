@@ -8,5 +8,11 @@ cd Diffusion-and-Flow-Matching
 source .venv-cuda121/bin/activate
 python train.py --method mean_flow --config configs/mean_flow.yaml
 python sample.py --method mean_flow --config configs/mean_flow.yaml
-python evaluate_torch_fidelity.sh mean_flow checkpoints/mean_flow/mean_flow_final.pt
-python evaluate_modal_torch_fidelity.sh mean_flow checkpoints/mean_flow/mean_flow_final.pt
+python scripts/export_celeba_images.py --cache-dir ./data/celeba --output-dir ./data/celeba_images --split train
+# Evaluate metrics (FID/KID): generates samples from checkpoint then runs torch-fidelity
+./scripts/evaluate_torch_fidelity.sh \
+  --method mean_flow \
+  --checkpoint logs/mean_flow_20260222_195259/checkpoints/mean_flow_0025000.pt \
+  --num-steps 1
+# Or on Modal:
+# ./scripts/evaluate_modal_torch_fidelity.sh --method mean_flow --checkpoint logs/mean_flow_20260222_195259/checkpoints/mean_flow_0025000.pt --num-steps 1 --metrics fid,kid

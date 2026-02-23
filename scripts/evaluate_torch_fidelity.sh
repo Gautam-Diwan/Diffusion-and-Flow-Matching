@@ -15,15 +15,17 @@
 set -e
 
 # Defaults
-METHOD="ddpm" # (right now you only have ddpm but you will be implementing more methods as hw progresses)
+METHOD="ddpm"
 CHECKPOINT="YOUR_PATH"
-DATASET_PATH="data/celeba"
+# torch-fidelity needs image files; HuggingFace caches Arrow. Use exported dir (see --dataset-path).
+DATASET_PATH="data/celeba_images"
 METRICS="kid"
 NUM_SAMPLES=1000
 BATCH_SIZE=256
 NUM_STEPS=1000
 GENERATED_DIR=""  # Will be set based on checkpoint location
-CACHE_DIR=""      # Will be set based on checkpoint location
+CACHE_DIR=""     # Will be set based on checkpoint location
+CELEBA_CACHE="data/celeba"  # HuggingFace cache used by export script
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -31,6 +33,7 @@ while [[ $# -gt 0 ]]; do
         --checkpoint) CHECKPOINT="$2"; shift 2 ;;
         --method) METHOD="$2"; shift 2 ;;
         --dataset-path) DATASET_PATH="$2"; shift 2 ;;
+        --celeba-cache) CELEBA_CACHE="$2"; shift 2 ;;
         --metrics) METRICS="$2"; shift 2 ;;
         --num-samples) NUM_SAMPLES="$2"; shift 2 ;;
         --batch-size) BATCH_SIZE="$2"; shift 2 ;;
@@ -75,6 +78,21 @@ SAMPLE_CMD="python sample.py \
 [ -n "$NUM_STEPS" ] && SAMPLE_CMD="$SAMPLE_CMD --num_steps $NUM_STEPS"
 
 eval $SAMPLE_CMD
+
+# Step 1b: Ensure reference dataset is image dir (torch-fidelity needs .png/.jpg, not Arrow cache)
+NUM_REF=0
+if [ -d "$DATASET_PATH" ]; then
+    NUM_REF=$(find "$DATASET_PATH" -maxdepth 1 -type f \( -name "*.png" -o -name "*.jpg" -o -name "*.jpeg" \) 2>/dev/null | wc -l)
+fi
+if [ $((NUM_REF)) -eq 0 ]; then
+    echo ""
+    echo "[1b] Reference dir $DATASET_PATH missing or empty; exporting from HuggingFace cache..."
+    python scripts/export_celeba_images.py --cache-dir "$CELEBA_CACHE" --output-dir "$DATASET_PATH" --split train
+    if [ $? -ne 0 ]; then
+        echo "Export failed. Create $DATASET_PATH with reference images or set --dataset-path to a dir of images."
+        exit 1
+    fi
+fi
 
 # Step 2: Run fidelity
 echo ""
