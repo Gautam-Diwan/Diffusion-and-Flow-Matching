@@ -28,6 +28,7 @@ import sys
 import argparse
 import math
 import time
+import copy
 from datetime import datetime
 from typing import Optional, Dict, Any
 
@@ -56,6 +57,18 @@ def load_config(config_path: str) -> dict:
     with open(config_path, 'r') as f:
         config = yaml.safe_load(f)
     return config
+
+
+def create_model_with_override(config: dict, model_override: Optional[dict] = None) -> nn.Module:
+    """Create UNet from config, optionally overriding model sub-config fields."""
+    if model_override is None:
+        return create_model_from_config(config)
+    merged = copy.deepcopy(config)
+    merged["model"] = {
+        **merged.get("model", {}),
+        **model_override,
+    }
+    return create_model_from_config(merged)
 
 
 def load_pretrained_fm_weights(
@@ -152,9 +165,11 @@ def cleanup_distributed(is_distributed: bool) -> None:
 
 def unwrap_model(model: nn.Module) -> nn.Module:
     """Return the underlying module if wrapped by DDP."""
-    if isinstance(model, torch.nn.parallel.DistributedDataParallel):
-        return model.module
-    return model
+    base = model.module if isinstance(model, torch.nn.parallel.DistributedDataParallel) else model
+    # torch.compile wraps modules in OptimizedModule and stores original as _orig_mod.
+    if hasattr(base, "_orig_mod"):
+        return base._orig_mod
+    return base
 
 
 def reduce_metrics(
@@ -387,6 +402,8 @@ def train(
                 print(f"  - Device: {device}")
         print(f"  - Config device setting: {config_device}")
         print(f"  - Mixed precision: {config['infrastructure'].get('mixed_precision', False)}")
+        print(f"  - Compile model: {config['infrastructure'].get('compile_model', False)}")
+        print(f"  - Channels-last: {config['infrastructure'].get('channels_last', False)}")
         print("=" * 60)
 
     # Set seed for reproducibility
@@ -429,8 +446,29 @@ def train(
         print("Creating model...")
     if method_name == 'mean_flow':
         base_model = create_meanflow_model_from_config(config).to(device)
+    elif method_name == 'progressive_distillation':
+        student_override = config.get('student_model', None)
+        base_model = create_model_with_override(config, student_override).to(device)
     else:
         base_model = create_model_from_config(config).to(device)
+
+    use_channels_last = bool(
+        config.get("infrastructure", {}).get("channels_last", False)
+        and device.type == "cuda"
+    )
+    if use_channels_last:
+        base_model = base_model.to(memory_format=torch.channels_last)
+
+    compile_model = bool(config.get("infrastructure", {}).get("compile_model", False))
+    compile_mode = str(config.get("infrastructure", {}).get("compile_mode", "reduce-overhead"))
+    if compile_model and hasattr(torch, "compile"):
+        if is_main_process:
+            print(f"Compiling model with torch.compile(mode='{compile_mode}')...")
+        try:
+            base_model = torch.compile(base_model, mode=compile_mode)
+        except Exception as e:
+            if is_main_process:
+                print(f"Warning: torch.compile failed, continuing without compile: {e}")
 
     torch.manual_seed(seed + rank)
     if torch.cuda.is_available():
@@ -559,7 +597,10 @@ def train(
         single_batch_base = next(data_iter)
         if isinstance(single_batch_base, (tuple, list)):
             single_batch_base = single_batch_base[0]  # Handle (image, label) tuples
-        single_batch_base = single_batch_base.to(device)
+        if use_channels_last and single_batch_base.dim() == 4:
+            single_batch_base = single_batch_base.to(device, memory_format=torch.channels_last)
+        else:
+            single_batch_base = single_batch_base.to(device)
 
         # Replicate to match desired batch size
         base_batch_size = single_batch_base.shape[0]
@@ -605,7 +646,10 @@ def train(
             if isinstance(batch, (tuple, list)):
                 batch = batch[0]  # Handle (image, label) tuples
 
-            batch = batch.to(device)
+            if use_channels_last and batch.dim() == 4:
+                batch = batch.to(device, memory_format=torch.channels_last)
+            else:
+                batch = batch.to(device)
         
         # Forward pass with mixed precision
         optimizer.zero_grad()
