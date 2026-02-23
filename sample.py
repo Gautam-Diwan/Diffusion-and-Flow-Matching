@@ -9,6 +9,7 @@ import os
 import sys
 import argparse
 import math  # Added math for grid calculation
+import copy
 from datetime import datetime
 
 import yaml
@@ -29,9 +30,21 @@ def load_checkpoint(checkpoint_path: str, device: torch.device, method: str = "d
     checkpoint = torch.load(checkpoint_path, map_location=device)
     config = checkpoint['config']
 
-    # Create model (MeanFlow uses UNetMeanFlow, others use UNet)
+    # Create model:
+    # - MeanFlow uses UNetMeanFlow
+    # - Progressive distillation may use a smaller student architecture stored
+    #   in config['student_model'], so merge it for model construction.
     if method == 'mean_flow':
         model = create_meanflow_model_from_config(config).to(device)
+    elif method == 'progressive_distillation':
+        model_config = copy.deepcopy(config)
+        student_override = model_config.get('student_model', None)
+        if student_override is not None:
+            model_config['model'] = {
+                **model_config.get('model', {}),
+                **student_override,
+            }
+        model = create_model_from_config(model_config).to(device)
     else:
         model = create_model_from_config(config).to(device)
     model.load_state_dict(checkpoint['model'])
