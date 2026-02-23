@@ -23,20 +23,20 @@ method:
   r_t_sampler: "logit_normal"  # "uniform" or "logit_normal"
   logit_normal_mu: -0.4
   logit_normal_sigma: 1.0
-  pct_r_neq_t: 0.25           # fraction of steps with r != t (rest is Flow Matching)
+  pct_r_neq_t: 0.5            # fraction of steps with r != t (rest is Flow Matching)
   loss_adaptive_p: 1.0        # 0 = plain MSE
   loss_adaptive_c: 1.0e-3
 
 training:
   batch_size: 64   # smaller than flow_matching: JVP doubles memory use; use 32 if OOM on your GPU
-  learning_rate: 2e-4
+  learning_rate: 1e-4
   weight_decay: 0.0
   betas: [0.9, 0.999]
-  ema_decay: 0.999
-  ema_start: 5000
+  ema_decay: 0.9999
+  ema_start: 0
   gradient_clip_norm: 1.0
-  num_iterations: 40000
-  warmup_iters: 5000
+  num_iterations: 20000
+  warmup_iters: 1000
   log_every: 100
   sample_every: 1000
   save_every: 5000

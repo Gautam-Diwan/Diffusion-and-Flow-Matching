@@ -57,6 +57,46 @@ def load_config(config_path: str) -> dict:
     return config
 
 
+def load_pretrained_fm_weights(
+    fm_checkpoint_path: str,
+    mf_model: nn.Module,
+    device: torch.device,
+) -> None:
+    """Transfer Flow Matching EMA weights into a MeanFlow model.
+
+    Loads the EMA shadow parameters from an FM checkpoint and copies every
+    weight whose key name and shape match the MeanFlow model.  The only FM
+    key that has no counterpart is ``time_pos_emb`` (learned embedding table);
+    MeanFlow replaces it with parameter-free sinusoidal embeddings so the key
+    simply won't appear in MeanFlow's state dict and is skipped automatically.
+    """
+    checkpoint = torch.load(fm_checkpoint_path, map_location=device)
+
+    if "ema" in checkpoint and "shadow" in checkpoint["ema"]:
+        fm_weights = checkpoint["ema"]["shadow"]
+        source_label = "EMA shadow"
+    else:
+        fm_weights = checkpoint.get("model", checkpoint)
+        source_label = "model"
+
+    mf_state = mf_model.state_dict()
+    transferred, skipped = [], []
+
+    for key in mf_state:
+        if key in fm_weights and fm_weights[key].shape == mf_state[key].shape:
+            mf_state[key] = fm_weights[key].to(device)
+            transferred.append(key)
+        else:
+            skipped.append(key)
+
+    mf_model.load_state_dict(mf_state)
+
+    print(f"Pretrained init from {source_label} weights ({fm_checkpoint_path}):")
+    print(f"  Transferred {len(transferred)}/{len(mf_state)} parameters")
+    if skipped:
+        print(f"  Skipped (no match): {skipped}")
+
+
 def setup_logging(config: dict, method_name: str) -> tuple[str, Any]:
     """Set up logging directories and wandb. Returns (log_dir, wandb_run)."""
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -279,6 +319,7 @@ def train(
     method_name: str,
     config: dict,
     resume_path: Optional[str] = None,
+    pretrained_path: Optional[str] = None,
     overfit_single_batch: bool = False,
 ):
     """
@@ -288,6 +329,7 @@ def train(
         method_name: 'ddpm' (you can add more later)
         config: Configuration dictionary
         resume_path: Path to checkpoint to resume from
+        pretrained_path: Path to pretrained FM checkpoint for MeanFlow weight init
         overfit_single_batch: If True, train on a single batch repeatedly for debugging
     """
     # Auto-detect distributed setup from environment
@@ -402,6 +444,12 @@ def train(
             device_ids=[local_rank],
             output_device=local_rank,
         )
+    # Transfer pretrained FM weights into MeanFlow model (before optimizer/EMA)
+    if pretrained_path is not None and method_name == 'mean_flow':
+        if is_main_process:
+            print(f"Loading pretrained FM weights from {pretrained_path}...")
+        load_pretrained_fm_weights(pretrained_path, base_model, device)
+
     num_params = sum(p.numel() for p in base_model.parameters())
     if is_main_process:
         print(f"Model parameters: {num_params:,} ({num_params / 1e6:.2f}M)")
@@ -716,6 +764,8 @@ def main():
                        help='Path to config file (e.g., configs/ddpm.yaml)')
     parser.add_argument('--resume', type=str, default=None,
                        help='Path to checkpoint to resume from')
+    parser.add_argument('--pretrained', type=str, default=None,
+                       help='Path to a pretrained FM checkpoint for MeanFlow weight init')
     parser.add_argument('--overfit-single-batch', action='store_true',
                        help='DEBUG MODE: Train on a single batch repeatedly to verify model can overfit')
 
@@ -733,6 +783,7 @@ def main():
         method_name=args.method,
         config=config,
         resume_path=args.resume,
+        pretrained_path=args.pretrained,
         overfit_single_batch=args.overfit_single_batch,
     )
 
