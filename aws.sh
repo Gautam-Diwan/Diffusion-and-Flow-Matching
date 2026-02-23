@@ -25,7 +25,7 @@ python sample.py --method progressive_distillation --config configs/progressive_
 
 # Progressive Distillation 10 to 5
 python train.py --method progressive_distillation --config configs/progressive_distillation_10_to_5.yaml
-/scripts/evaluate_torch_fidelity.sh --checkpoint <distill_ckpt.pt> --method progressive_distillation --num-samples 1000 --num-steps 10 --metrics kid
+./scripts/evaluate_torch_fidelity.sh --checkpoint <distill_ckpt.pt> --method progressive_distillation --num-samples 1000 --num-steps 10 --metrics kid
 
 # Optional: Sample from Progressive Distillation 10 to 5
 python sample.py --method progressive_distillation --config configs/progressive_distillation_10_to_5.yaml
