@@ -1,0 +1,89 @@
+data:
+  dataset: "celeba"
+  root: "./data/celeba"
+  from_hub: true
+  repo_name: "electronickale/cmu-10799-celeba64-subset"
+  image_size: 64
+  channels: 3
+  num_workers: 4
+  pin_memory: true
+  augment: true
+
+# Teacher architecture is loaded from teacher checkpoint config by default.
+# This model section defines baseline architecture used when no student_model override is provided.
+model:
+  base_channels: 128
+  channel_mult: [1, 2, 2, 4]
+  num_res_blocks: 2
+  attention_resolutions: [8, 16]
+  num_heads: 4
+  dropout: 0.1
+  use_scale_shift_norm: true
+
+# Medium-shrink student for faster inference at 5 steps.
+student_model:
+  base_channels: 96
+  num_res_blocks: 1
+  attention_resolutions: [8, 16]
+
+teacher:
+  checkpoint_path: "./checkpoints/progressive_distillation_20_10_final.pt"
+  use_ema: true
+  sampler: "dpm_solver"
+  num_steps: 10
+  dpm_solver:
+    order: 2
+    method: "singlestep"
+    skip_type: "time_uniform"
+
+method:
+  student_num_steps: 5
+  loss_type: "huber"           # options: mse, huber, charbonnier
+  huber_delta: 0.01
+  charbonnier_eps: 1.0e-3
+  fm_anchor_weight: 0.08       # slightly stronger anchor for stricter quality retention
+  interval_weight_alpha: 0.6
+  feature_l2_weight: 0.0       # disabled by default (optional extra regularizer)
+
+training:
+  batch_size: 64
+  learning_rate: 1e-4
+  weight_decay: 0.0
+  betas: [0.9, 0.999]
+  ema_decay: 0.9999
+  ema_start: 0
+  gradient_clip_norm: 1.0
+  num_iterations: 40000
+  warmup_iters: 5000
+  log_every: 100
+  sample_every: 1000
+  save_every: 5000
+  num_samples: 16
+
+sampling:
+  num_steps: 5
+  sampler: "dpm_solver"
+  dpm_solver:
+    order: 2
+    method: "singlestep"
+    skip_type: "time_uniform"
+
+infrastructure:
+  seed: 42
+  device: "cuda"
+  num_gpus: 1
+  mixed_precision: true
+  compile_model: true
+  compile_mode: "reduce-overhead"
+  channels_last: true
+
+checkpoint:
+  dir: "./checkpoints"
+  resume: true
+
+logging:
+  dir: "./logs"
+  wandb:
+    enabled: true
+    project: "cmu-10799-diffusion"
+    entity: null

@@ -6,6 +6,7 @@ two fine teacher updates over 20-step intervals.
 """
 
 import time
+import copy
 from typing import Any, Dict, Tuple
 
 import torch
@@ -46,6 +47,7 @@ class ProgressiveDistillation(BaseMethod):
         charbonnier_eps: float = 1e-3,
         fm_anchor_weight: float = 0.05,
         interval_weight_alpha: float = 0.5,
+        feature_l2_weight: float = 0.0,
     ):
         super().__init__(model, device)
 
@@ -76,6 +78,7 @@ class ProgressiveDistillation(BaseMethod):
         self.charbonnier_eps = float(charbonnier_eps)
         self.fm_anchor_weight = float(fm_anchor_weight)
         self.interval_weight_alpha = float(interval_weight_alpha)
+        self.feature_l2_weight = float(feature_l2_weight)
 
         self._teacher_ratio = self.teacher_num_steps // self.student_num_steps
         self._teacher_dt = 1.0 / self.teacher_num_steps
@@ -167,10 +170,19 @@ class ProgressiveDistillation(BaseMethod):
             fm_loss = F.mse_loss(pred_velocity, target_velocity)
 
         loss = distill_loss + self.fm_anchor_weight * fm_loss
+        feature_l2 = torch.tensor(0.0, device=x.device)
+        if self.feature_l2_weight > 0:
+            with torch.no_grad():
+                teacher_v = self.teacher_model(z_start, self._to_timestep(t_start))
+            student_v = self.model(z_start, self._to_timestep(t_start))
+            feature_l2 = F.mse_loss(student_v, teacher_v)
+            loss = loss + self.feature_l2_weight * feature_l2
+
         metrics: Dict[str, float] = {
             "loss": loss.item(),
             "distill_loss": distill_loss.item(),
             "fm_anchor_loss": fm_loss.item(),
+            "feature_l2_loss": feature_l2.item(),
             "interval_t_mean": t_start.mean().item(),
         }
         return loss, metrics
@@ -253,6 +265,14 @@ class ProgressiveDistillation(BaseMethod):
 
         teacher_ckpt = torch.load(teacher_ckpt_path, map_location=device)
         teacher_arch_config = teacher_ckpt.get("config", config)
+        teacher_model_override = teacher_cfg.get("model", None)
+        if teacher_model_override is not None:
+            teacher_arch_config = copy.deepcopy(teacher_arch_config)
+            base_teacher_model_cfg = teacher_arch_config.get("model", {})
+            teacher_arch_config["model"] = {
+                **base_teacher_model_cfg,
+                **teacher_model_override,
+            }
         teacher_model = create_model_from_config(teacher_arch_config).to(device)
 
         use_ema = bool(teacher_cfg.get("use_ema", True))
@@ -280,4 +300,5 @@ class ProgressiveDistillation(BaseMethod):
             charbonnier_eps=float(method_cfg.get("charbonnier_eps", 1e-3)),
             fm_anchor_weight=float(method_cfg.get("fm_anchor_weight", 0.05)),
             interval_weight_alpha=float(method_cfg.get("interval_weight_alpha", 0.5)),
+            feature_l2_weight=float(method_cfg.get("feature_l2_weight", 0.0)),
         )
