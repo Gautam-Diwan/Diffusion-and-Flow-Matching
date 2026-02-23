@@ -246,7 +246,7 @@ def load_checkpoint(
 
 @torch.no_grad()
 def generate_samples(
-    method,
+    method_obj,
     num_samples: int,
     image_shape: tuple,
     device: torch.device,
@@ -259,7 +259,7 @@ def generate_samples(
     """
     Generate samples using EMA parameters if available.
     """
-    method.eval_mode()
+    method_obj.eval_mode()
     
     # Track if we successfully applied EMA
     using_ema = False
@@ -276,7 +276,7 @@ def generate_samples(
 
     try:
         # Run sampling (now using EMA weights if applied)
-        result = method.sample(
+        result = method_obj.sample(
             batch_size=num_samples,
             image_shape=image_shape,
             **sampling_kwargs
@@ -286,7 +286,7 @@ def generate_samples(
         if using_ema:
             ema.restore()  # Restore original training weights
 
-    method.train_mode()
+    method_obj.train_mode()
     # method.sample returns (samples, metrics); return only the tensor
     if isinstance(result, tuple):
         result = result[0]
