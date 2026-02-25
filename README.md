@@ -1,10 +1,100 @@
-# CMU 10799 Diffusion & Flow Matching Homework Starter Code
+# CMU 10799: Diffusion & Flow Matching Homework Compendium
 
-Welcome to CMU 10799 Spring 2026: Diffusion & Flow Matching!
+Welcome to CMU 10799 Spring 2026: Diffusion & Flow Matching homework taught by Yutong (Kelly) He !
 
-This repository contains your starter code for all four homework assignments. You'll build a working diffusion model from scratch, starting with DDPM fundamentals and progressing through flow matching to your chosen specialization track. The codebase is designed to grow with you, and what you implement in HW1 becomes the foundation for everything that follows.
+This repository contains the code for all four homework assignments done by me, Gautam Diwan. Here, I built a working diffusion model from scratch, starting with DDPM fundamentals and progressing through DDIM, flow matching to my chosen specialization track: Speed
 
 [Class Website](https://kellyyutonghe.github.io/10799S26/) | [Homework Handouts](https://kellyyutonghe.github.io/10799S26/homework/)
+
+#### HW4 Poster Snapshot
+
+![HW4 poster summary](10799%20Poster.png)
+
+## End-to-End Project Arc (HW1 -> HW4)
+
+This repository now contains the full progression of my CMU 10-799 project, not just the final homework.
+
+### HW1: DDPM Foundations
+
+- Implemented DDPM end-to-end (`ddpm.py`, `unet.py`, training/sampling/eval pipeline).
+- Established the first quality baseline on CelebA-64 with KID below the course threshold.
+- Built intuition around timestep effects, parameterization, and sampling-cost tradeoffs.
+
+### HW2: Flow Matching + DDIM
+
+- Implemented Flow Matching (`flow_matching.py`) and DDIM sampling on top of DDPM.
+- Found that Flow Matching achieved stronger speed-quality tradeoff than DDIM at low step budgets.
+- Finalized the **Speed** track direction for HW3/HW4.
+
+### HW3: Solver-Centric Speed Baseline (No Retraining)
+
+- Focused on ODE solver improvements over a fixed Flow Matching checkpoint.
+- Implemented and benchmarked Euler / Heun / DPM-Solver with order, step, and schedule ablations.
+- Key baseline from this stage: **DPM-Solver-2, singlestep, 20 steps, uniform schedule** (KID ~0.0041, NFE 320).
+
+#### HW3 Solver Sweep Summary
+
+![HW3 solver sweep results](Solvers_results.png)
+
+### HW4 (Highlight): Distillation + Systems Co-Design
+
+- Shifted from solver-only acceleration to training-based acceleration:
+  - Progressive Distillation: `20->10`, then `10->5`
+  - Huber loss + anchor stabilization (+ optional feature-level matching)
+  - L40S optimizations: mixed precision, TF32, channels-last, `torch.compile`
+- Also tested compact student architecture for faster inference.
+
+#### Representative Final Results (1000 samples)
+
+| Model Variant | Steps | FID | KID Mean | KID Std | NFE | Time |
+|---|---:|---:|---:|---:|---:|---:|
+| HW3 baseline: DPM-Solver-2 (uniform, singlestep) | 20 | 20.4377 | 0.004106545 | 0.0002978621 | 320 | 51.68s |
+| MeanFlow (20 steps) | 20 | 40.84455 | 0.02728433 | 0.0008754781 | 80 | 25.27s |
+| Progressive Distillation (20->10, 40k) | 10 | 26.34567 | 0.009454842 | 0.0004839942 | 80 | 25.82s |
+| Progressive Distillation (20->10, 80k) | 10 | 22.60712 | 0.007012112 | 0.0003206713 | 80 | 25.87s |
+| Progressive Distillation (10->5 compact, 60k) | 5 | 28.40876 | 0.01047601 | 0.0005119737 | 40 | 6.47s |
+
+Interpretation:
+- Distillation gives major speedup (NFE/time).
+- Longer training improves 10-step quality (40k -> 80k).
+- At very low steps, quality remains limited by trajectory geometry + model capacity.
+
+### HW4-Specific Additions in This Repo
+
+- New method: `src/methods/progressive_distillation.py`
+- Distillation configs:
+  - `configs/progressive_distillation_20_to_10.yaml`
+  - `configs/progressive_distillation_10_to_5.yaml`
+- Training/sampling compatibility updates:
+  - `train.py` (student model overrides, compile/channels-last support, PD integration)
+  - `sample.py` (correct model reconstruction for distilled checkpoints)
+
+### Reproduce Key HW4 Runs
+
+```bash
+# Stage A: 20 -> 10 distillation
+python train.py --method progressive_distillation --config configs/progressive_distillation_20_to_10.yaml
+
+# Stage B: 10 -> 5 distillation (compact student)
+python train.py --method progressive_distillation --config configs/progressive_distillation_10_to_5.yaml
+```
+
+```bash
+# Sample/evaluate distilled model
+python sample.py \
+  --checkpoint logs/<run>/checkpoints/progressive_distillation_final.pt \
+  --method progressive_distillation \
+  --config logs/<run>/config.yaml \
+  --num-steps 10
+
+./scripts/evaluate_torch_fidelity.sh \
+  --checkpoint logs/<run>/checkpoints/progressive_distillation_final.pt \
+  --method progressive_distillation \
+  --num-steps 10 \
+  --num-samples 1000 \
+  --metrics kid,fid \
+  --dataset-path data/celeba-subset/train/images
+```
 
 ## Project Structure
 
@@ -258,7 +348,8 @@ All hyperparameters are controlled via config files. Edit `configs/ddpm*.yaml` t
 
 ## Authors
 
-Yutong (Kelly) He, with assistance from Claude Code and OpenAI Codex.
+Gautam Diwan: Completed HW1-HW4
+Yutong (Kelly) He: Course Instructor; provided starter code with assistance from Claude Code and OpenAI Codex.
 
 ## References
 
